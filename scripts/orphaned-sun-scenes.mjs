@@ -2,9 +2,8 @@ const MODULE_ID = "orphaned-sun-scenes";
 const GHOST_SHIP_TEMPLATE_VERSION = "0.3.3";
 const GHOST_SHIP_KEY = "signatory-ghost-ship";
 const GHOST_SHIP_NAME = "Signatory Ghost Ship — Derelict Accord Vessel";
-const MAP_PATH = `modules/${MODULE_ID}/assets/maps/signatory-ghost-ship.webp`;
-const MAP_REMOTE_FALLBACK = "https://raw.githubusercontent.com/jonkellyrice-cmyk/Foundry-scenes/main/assets/maps/signatory-ghost-ship.webp";
-const MAP_FILENAME = "signatory-ghost-ship.webp";
+const MAP_PATH = `modules/${MODULE_ID}/assets/maps/signatory-ghost-ship.jpg`;
+const MAP_FILENAME = "signatory-ghost-ship.jpg";
 
 Hooks.once("init", () => {
   game.settings.register(MODULE_ID, "autoCreateGhostShip", {
@@ -275,30 +274,38 @@ function makeGhostShipMapTile(src) {
   };
 }
 
-async function fetchGhostShipMapBlob() {
-  const failures = [];
-  for (const source of [MAP_PATH, MAP_REMOTE_FALLBACK]) {
-    try {
-      const response = await fetch(source, { cache: "no-store" });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const blob = await response.blob();
-      if (!blob.size) throw new Error("empty image response");
-      return blob;
-    } catch (error) {
-      failures.push(`${source}: ${error?.message ?? error}`);
-    }
+async function decodeGhostShipBlob(blob, label) {
+  if (!blob?.size) throw new Error(`${label} was empty.`);
+  if (blob.type && !blob.type.startsWith("image/")) {
+    throw new Error(`${label} was not served as an image (${blob.type}).`);
   }
-  throw new Error(`Could not load the bundled Ghost Ship artwork. ${failures.join(" | ")}`);
+
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(blob);
+    if (bitmap.width !== 1672 || bitmap.height !== 941) {
+      throw new Error(`unexpected dimensions ${bitmap.width}x${bitmap.height}`);
+    }
+  } catch (error) {
+    throw new Error(`${label} could not be decoded by the browser: ${error?.message ?? error}`);
+  } finally {
+    bitmap?.close?.();
+  }
+}
+
+async function fetchGhostShipMapBlob() {
+  const response = await fetch(MAP_PATH, { cache: "no-store" });
+  if (!response.ok) throw new Error(`Bundled Ghost Ship JPEG returned HTTP ${response.status}`);
+  const blob = await response.blob();
+  await decodeGhostShipBlob(blob, "Bundled Ghost Ship JPEG");
+  return blob;
 }
 
 async function verifyGhostShipMapSource(path) {
   const response = await fetch(path, { cache: "no-store" });
   if (!response.ok) throw new Error(`Ghost Ship uploaded image returned HTTP ${response.status}`);
   const blob = await response.blob();
-  if (!blob.size) throw new Error("Ghost Ship uploaded image was empty.");
-  if (blob.type && !blob.type.startsWith("image/")) {
-    throw new Error(`Ghost Ship uploaded asset was not an image (${blob.type}).`);
-  }
+  await decodeGhostShipBlob(blob, "Uploaded Ghost Ship image");
   return path;
 }
 
@@ -322,7 +329,7 @@ async function provisionGhostShipMapAsset() {
   }
 
   const blob = await fetchGhostShipMapBlob();
-  const file = new File([blob], MAP_FILENAME, { type: blob.type || "image/webp" });
+  const file = new File([blob], MAP_FILENAME, { type: "image/jpeg" });
   const response = await FilePicker.upload(source, directory, file, {}, { notify: false });
   const path = typeof response?.path === "string" ? response.path.trim() : "";
   if (!path) throw new Error(`Ghost Ship upload to ${source}:${directory} returned no usable asset path.`);
