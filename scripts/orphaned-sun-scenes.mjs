@@ -415,7 +415,8 @@ export async function repairGhostShipVisibility(scene = null) {
     || managedFloorTiles.some(tile => String(tile.texture?.src ?? "").includes("signatory-ghost-ship.webp"));
   const needsVersionedMapRepair = sourceVersion !== GHOST_SHIP_TEMPLATE_VERSION;
   const needsMapDeliveryRepair = usesBundledBackground || needsVersionedMapRepair || hasLegacyWebpReference;
-  if (!needsMapDeliveryRepair && !legacyOverdarkPreset) return target;
+  const needsObsoleteFloorCleanup = managedFloorTiles.length > 0;
+  if (!needsMapDeliveryRepair && !legacyOverdarkPreset && !needsObsoleteFloorCleanup) return target;
 
   let mapSrc = backgroundSrc;
   if (needsMapDeliveryRepair) mapSrc = await provisionGhostShipMapAsset();
@@ -429,10 +430,10 @@ export async function repairGhostShipVisibility(scene = null) {
     update["environment.darknessLevelLock"] = false;
   }
 
-  await target.update(update);
   if (managedFloorTiles.length) {
     await target.deleteEmbeddedDocuments("Tile", managedFloorTiles.map(tile => tile.id));
   }
+  await target.update(update);
   if (needsVersionedMapRepair) {
     await replaceGhostShipManagedLights(target);
   }
