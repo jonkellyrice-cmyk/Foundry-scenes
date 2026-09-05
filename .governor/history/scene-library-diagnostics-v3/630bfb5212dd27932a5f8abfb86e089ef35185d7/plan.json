@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "project": "scene-library-diagnostics-v3",
+  "title": "Persist artifact point telemetry and add canvas/PIXI render-tree probe",
+  "status": "ready",
+  "phases": [
+    {
+      "order": 1,
+      "id": "canvas-point-probe-engine",
+      "title": "Add canvas/PIXI point-probe telemetry and include it in diagnostic snapshots",
+      "patch": "patches/001-canvas-point-probe-engine.patch.json"
+    },
+    {
+      "order": 2,
+      "id": "persisted-probe-ui",
+      "title": "Persist picked artifact telemetry and expose canvas probe details in the Diagnostics UI and clipboard JSON",
+      "patch": "patches/002-persisted-probe-ui.patch.json"
+    },
+    {
+      "order": 3,
+      "id": "release-0-3-10",
+      "title": "Publish enhanced diagnostics as module 0.3.10",
+      "patch": "patches/003-release-0-3-10.patch.json"
+    }
+  ],
+  "finalChecks": [
+    {
+      "name": "Module JavaScript syntax",
+      "run": "find scripts -name '*.mjs' -print0 | xargs -0 -n1 node --check"
+    },
+    {
+      "name": "Canvas probe engine present",
+      "run": "grep -q 'collectCanvasPointProbe' scripts/scene-diagnostics.mjs && grep -q 'collectArtifactPointProbe' scripts/scene-diagnostics.mjs"
+    },
+    {
+      "name": "Persistent probe wiring present",
+      "run": "grep -q 'diagnosticProbeStorageKey' scripts/scene-library.mjs && grep -q 'Canvas / PIXI point probe' templates/scene-library.hbs"
+    },
+    {
+      "name": "Manifest version",
+      "run": "node -e \"const m=JSON.parse(require('fs').readFileSync('module.json','utf8')); if(m.version!=='0.3.10') throw new Error('expected module 0.3.10');\""
+    }
+  ]
+}
