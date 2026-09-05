@@ -81,6 +81,10 @@ The initial bundled scene includes:
 - intermittent red emergency lights;
 - deliberately dark corridors for horror exploration.
 
+### Visibility baseline
+
+The Ghost Ship artwork is already very dark, so the Foundry environment now uses a readable horror-lighting baseline rather than stacking an almost-black darkness overlay on top of the image. The scene keeps sparse wall-constrained lights and shadows, but its initial darkness is 0.58 and is no longer locked. On update, module-managed Ghost Ship scenes still using the legacy 0.88 darkness preset are migrated automatically without replacing their walls, doors, tokens, or other edits. A missing bundled background path is also repaired automatically.
+
 The active GM still receives the Signatory Ghost Ship automatically the first time the module is enabled unless that setting is disabled. This preserves the first-release behavior while future scenes are imported intentionally through the Scene Library.
 
 ### GM console helpers
