@@ -3,6 +3,17 @@ import {
   rebuildGhostShipScene,
   getGhostShipSceneData
 } from "./orphaned-sun-scenes.mjs";
+import {
+  loadComicDraft,
+  saveComicDraft,
+  comicContext,
+  addFilesToComicDraft,
+  addPathToComicDraft,
+  removeComicPanel,
+  moveComicPanel,
+  clearComicDraft,
+  createComicBookScene
+} from "./comic-book-maker.mjs";
 
 const MODULE_ID = "orphaned-sun-scenes";
 const APP_ID = `${MODULE_ID}-scene-library`;
@@ -89,12 +100,18 @@ async function activateSceneLayer(scene, control) {
 }
 
 export class OrphanedSunSceneLibrary extends HandlebarsApplicationMixin(ApplicationV2) {
+  constructor(options = {}) {
+    super(options);
+    this.activeTab = "scenes";
+    this.comicDraft = loadComicDraft();
+  }
+
   static DEFAULT_OPTIONS = {
     id: APP_ID,
     classes: ["orphaned-sun-scene-library"],
     position: { width: 720, height: 640 },
     window: {
-      title: "Orphaned Sun Scene Library",
+      title: "Orphaned Sun GM Tools",
       icon: "fa-solid fa-map-location-dot",
       frame: true,
       positioned: true,
@@ -112,7 +129,16 @@ export class OrphanedSunSceneLibrary extends HandlebarsApplicationMixin(Applicat
       restoreScene: OrphanedSunSceneLibrary.restoreScene,
       removeScene: OrphanedSunSceneLibrary.removeScene,
       toggleAutoCreate: OrphanedSunSceneLibrary.toggleAutoCreate,
-      refresh: OrphanedSunSceneLibrary.refresh
+      refresh: OrphanedSunSceneLibrary.refresh,
+      showScenes: OrphanedSunSceneLibrary.showScenes,
+      showComic: OrphanedSunSceneLibrary.showComic,
+      comicChooseFiles: OrphanedSunSceneLibrary.comicChooseFiles,
+      comicAddPath: OrphanedSunSceneLibrary.comicAddPath,
+      comicRemovePanel: OrphanedSunSceneLibrary.comicRemovePanel,
+      comicMoveUp: OrphanedSunSceneLibrary.comicMoveUp,
+      comicMoveDown: OrphanedSunSceneLibrary.comicMoveDown,
+      comicClear: OrphanedSunSceneLibrary.comicClear,
+      comicExport: OrphanedSunSceneLibrary.comicExport
     }
   };
 
@@ -131,8 +157,130 @@ export class OrphanedSunSceneLibrary extends HandlebarsApplicationMixin(Applicat
       autoCreate: game.settings.get(MODULE_ID, "autoCreateGhostShip"),
       sceneCount: scenes.length,
       installedCount: scenes.filter(scene => scene.installed).length,
-      scenes
+      scenes,
+      tabScenes: this.activeTab === "scenes",
+      tabComic: this.activeTab === "comic",
+      comic: comicContext(this.comicDraft)
     };
+  }
+
+  async _onRender(context, options) {
+    await super._onRender?.(context, options);
+    if (this.activeTab !== "comic") return;
+
+    const title = this.element.querySelector('[name="comicTitle"]');
+    const layout = this.element.querySelector('[name="comicLayout"]');
+    const orientation = this.element.querySelector('[name="comicOrientation"]');
+    const fileInput = this.element.querySelector('[data-comic-files]');
+    const dropzone = this.element.querySelector('[data-comic-dropzone]');
+
+    title?.addEventListener("change", async event => {
+      this.comicDraft.title = event.currentTarget.value;
+      this.comicDraft = await saveComicDraft(this.comicDraft);
+      await this.render({ force: true });
+    });
+    layout?.addEventListener("change", async event => {
+      this.comicDraft.layout = event.currentTarget.value;
+      this.comicDraft = await saveComicDraft(this.comicDraft);
+      await this.render({ force: true });
+    });
+    orientation?.addEventListener("change", async event => {
+      this.comicDraft.orientation = event.currentTarget.value;
+      this.comicDraft = await saveComicDraft(this.comicDraft);
+      await this.render({ force: true });
+    });
+    fileInput?.addEventListener("change", async event => {
+      await this._handleComicFiles(event.currentTarget.files);
+      event.currentTarget.value = "";
+    });
+    dropzone?.addEventListener("dragover", event => {
+      event.preventDefault();
+      dropzone.classList.add("is-dragging");
+    });
+    dropzone?.addEventListener("dragleave", () => dropzone.classList.remove("is-dragging"));
+    dropzone?.addEventListener("drop", async event => {
+      event.preventDefault();
+      dropzone.classList.remove("is-dragging");
+      await this._handleComicFiles(event.dataTransfer?.files);
+    });
+  }
+
+  async _handleComicFiles(files) {
+    try {
+      this.comicDraft = await addFilesToComicDraft(this.comicDraft, files);
+      await this.render({ force: true });
+    } catch (error) {
+      console.error(`${MODULE_ID} | Comic image upload failed`, error);
+      ui.notifications?.error(`Comic image upload failed: ${error.message}`);
+    }
+  }
+
+  static async showScenes() {
+    this.activeTab = "scenes";
+    await this.render({ force: true });
+  }
+
+  static async showComic() {
+    this.activeTab = "comic";
+    this.comicDraft = loadComicDraft();
+    await this.render({ force: true });
+  }
+
+  static async comicChooseFiles() {
+    this.element.querySelector('[data-comic-files]')?.click();
+  }
+
+  static async comicAddPath() {
+    const input = this.element.querySelector('[name="comicImagePath"]');
+    try {
+      this.comicDraft = await addPathToComicDraft(this.comicDraft, input?.value ?? "");
+      if (input) input.value = "";
+      await this.render({ force: true });
+    } catch (error) {
+      ui.notifications?.warn(error.message);
+    }
+  }
+
+  static async comicRemovePanel(_event, target) {
+    const panelId = target.closest("[data-panel-id]")?.dataset.panelId;
+    if (!panelId) return;
+    this.comicDraft = await removeComicPanel(this.comicDraft, panelId);
+    await this.render({ force: true });
+  }
+
+  static async comicMoveUp(_event, target) {
+    const panelId = target.closest("[data-panel-id]")?.dataset.panelId;
+    if (!panelId) return;
+    this.comicDraft = await moveComicPanel(this.comicDraft, panelId, -1);
+    await this.render({ force: true });
+  }
+
+  static async comicMoveDown(_event, target) {
+    const panelId = target.closest("[data-panel-id]")?.dataset.panelId;
+    if (!panelId) return;
+    this.comicDraft = await moveComicPanel(this.comicDraft, panelId, 1);
+    await this.render({ force: true });
+  }
+
+  static async comicClear() {
+    const proceed = await confirmAction(
+      "Clear comic draft?",
+      "<p>This clears the current panel list and layout choices. Uploaded image files remain in Foundry storage.</p>"
+    );
+    if (!proceed) return;
+    this.comicDraft = await clearComicDraft();
+    await this.render({ force: true });
+  }
+
+  static async comicExport() {
+    try {
+      this.comicDraft = await saveComicDraft(this.comicDraft);
+      const scene = await createComicBookScene(this.comicDraft);
+      await scene.view();
+    } catch (error) {
+      console.error(`${MODULE_ID} | Comic scene export failed`, error);
+      ui.notifications?.error(`Comic scene export failed: ${error.message}`);
+    }
   }
 
   static async importScene(_event, target) {
@@ -280,16 +428,16 @@ Hooks.on("getSceneControlButtons", controls => {
   const maxOrder = Math.max(0, ...Object.values(controls).map(control => Number(control.order ?? 0)));
   controls[TOOLBAR_CONTROL] = {
     name: TOOLBAR_CONTROL,
-    title: "Orphaned Sun Scenes",
-    icon: "fa-solid fa-map-location-dot",
+    title: "Orphaned Sun GM Tools",
+    icon: "fa-solid fa-book-open",
     order: maxOrder + 10,
     visible: true,
     activeTool: "library",
     tools: {
       library: {
         name: "library",
-        title: "Open Orphaned Sun Scene Library",
-        icon: "fa-solid fa-folder-open",
+        title: "Open Orphaned Sun GM Tools",
+        icon: "fa-solid fa-book-open",
         order: 0,
         button: true,
         visible: true,
@@ -308,7 +456,9 @@ Hooks.once("ready", () => {
   module.api ??= {};
   Object.assign(module.api, {
     openSceneLibrary,
+    openGMTools: openSceneLibrary,
     OrphanedSunSceneLibrary,
-    sceneLibrary: SCENE_LIBRARY
+    sceneLibrary: SCENE_LIBRARY,
+    createComicBookScene
   });
 });
