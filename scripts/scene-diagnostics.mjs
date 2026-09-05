@@ -87,20 +87,154 @@ function drawingTelemetry(drawing) {
   };
 }
 
+function rectIntersectsViewport(rect) {
+  const width = globalThis.innerWidth ?? document.documentElement?.clientWidth ?? 0;
+  const height = globalThis.innerHeight ?? document.documentElement?.clientHeight ?? 0;
+  return rect.right > 0 && rect.bottom > 0 && rect.left < width && rect.top < height;
+}
+
+function domIdentity(element) {
+  return {
+    tag: element?.tagName?.toLowerCase?.() ?? "?",
+    id: element?.id || "",
+    classes: Array.from(element?.classList ?? []).slice(0, 8).join(".")
+  };
+}
+
+function pseudoTelemetry(element, pseudo) {
+  try {
+    const style = getComputedStyle(element, pseudo);
+    return {
+      background: style.backgroundColor,
+      backgroundImage: style.backgroundImage,
+      boxShadow: style.boxShadow,
+      content: style.content,
+      display: style.display,
+      opacity: style.opacity,
+      green: isStrongGreen(style.backgroundColor)
+    };
+  } catch {
+    return null;
+  }
+}
+
+function matchingVisualRules(element) {
+  if (!globalThis.document?.styleSheets || !element?.matches) return [];
+  const matches = [];
+  const interesting = /(background(?:-color|-image)?|box-shadow|filter|opacity|mix-blend-mode|clip-path)\s*:/i;
+
+  function visitRules(rules, source, depth = 0) {
+    if (!rules || depth > 4 || matches.length >= 30) return;
+    for (const rule of Array.from(rules)) {
+      if (matches.length >= 30) break;
+      if (rule.selectorText && rule.style) {
+        let matched = false;
+        try {
+          matched = element.matches(rule.selectorText);
+        } catch {
+          matched = false;
+        }
+        const cssText = rule.style.cssText ?? "";
+        if (matched && interesting.test(cssText)) {
+          matches.push({
+            source,
+            selector: rule.selectorText,
+            css: cssText
+          });
+        }
+      }
+      if (rule.cssRules) {
+        try {
+          visitRules(rule.cssRules, source, depth + 1);
+        } catch {
+          // Cross-origin or unsupported nested stylesheet rule.
+        }
+      }
+    }
+  }
+
+  for (const sheet of Array.from(document.styleSheets)) {
+    let rules;
+    try {
+      rules = sheet.cssRules;
+    } catch {
+      continue;
+    }
+    visitRules(rules, sheet.href || "inline stylesheet");
+  }
+  return matches;
+}
+
+function elementPointTelemetry(element, rank) {
+  const rect = element.getBoundingClientRect?.();
+  const style = getComputedStyle(element);
+  const before = pseudoTelemetry(element, "::before");
+  const after = pseudoTelemetry(element, "::after");
+  return {
+    rank,
+    ...domIdentity(element),
+    x: Math.round(rect?.x ?? 0),
+    y: Math.round(rect?.y ?? 0),
+    width: Math.round(rect?.width ?? 0),
+    height: Math.round(rect?.height ?? 0),
+    background: style.backgroundColor,
+    backgroundImage: style.backgroundImage,
+    boxShadow: style.boxShadow,
+    color: style.color,
+    display: style.display,
+    visibility: style.visibility,
+    position: style.position,
+    zIndex: style.zIndex,
+    opacity: style.opacity,
+    filter: style.filter,
+    mixBlendMode: style.mixBlendMode,
+    isolation: style.isolation,
+    clipPath: style.clipPath,
+    systemColor: style.getPropertyValue("--system-color")?.trim?.() || "",
+    green: isStrongGreen(style.backgroundColor) || Boolean(before?.green) || Boolean(after?.green),
+    before,
+    after,
+    visualRules: matchingVisualRules(element)
+  };
+}
+
+export function collectDomPointProbe(x, y) {
+  if (!globalThis.document?.elementsFromPoint || !globalThis.getComputedStyle) {
+    return { x: Math.round(finite(x)), y: Math.round(finite(y)), stack: [], status: "elementsFromPoint unavailable" };
+  }
+  const px = Math.max(0, Math.min((globalThis.innerWidth ?? 1) - 1, finite(x)));
+  const py = Math.max(0, Math.min((globalThis.innerHeight ?? 1) - 1, finite(y)));
+  const stack = document.elementsFromPoint(px, py)
+    .slice(0, 12)
+    .map((element, index) => elementPointTelemetry(element, index + 1));
+  return {
+    x: Math.round(px),
+    y: Math.round(py),
+    status: stack.length ? "Captured" : "No DOM elements at point",
+    stack,
+    greenStackEntries: stack.filter(item => item.green).length
+  };
+}
+
 function collectGreenDomCandidates() {
   if (!globalThis.document?.body || !globalThis.getComputedStyle) return [];
   const candidates = [];
-  const elements = Array.from(document.body.querySelectorAll("*")).slice(0, 5000);
+  const elements = Array.from(document.body.querySelectorAll("*")).slice(0, 7000);
   for (const element of elements) {
     const rect = element.getBoundingClientRect?.();
-    if (!rect || rect.width < 20 || rect.height < 20 || rect.width * rect.height < 5000) continue;
+    if (!rect || !rectIntersectsViewport(rect)) continue;
+    if (rect.width < 20 || rect.height < 20 || rect.width * rect.height < 5000) continue;
     const style = getComputedStyle(element);
-    if (!isStrongGreen(style.backgroundColor)) continue;
+    if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) <= 0) continue;
+    const before = pseudoTelemetry(element, "::before");
+    const after = pseudoTelemetry(element, "::after");
+    if (!isStrongGreen(style.backgroundColor) && !before?.green && !after?.green) continue;
     candidates.push({
-      tag: element.tagName?.toLowerCase?.() ?? "?",
-      id: element.id || "",
-      classes: Array.from(element.classList ?? []).slice(0, 6).join("."),
+      ...domIdentity(element),
       background: style.backgroundColor,
+      backgroundImage: style.backgroundImage,
+      pseudoBefore: before?.background ?? "",
+      pseudoAfter: after?.background ?? "",
       position: style.position,
       zIndex: style.zIndex,
       x: Math.round(rect.x),
@@ -179,7 +313,7 @@ function canvasTelemetry(scene) {
   };
 }
 
-export async function collectSceneDiagnostics(scene) {
+export async function collectSceneDiagnostics(scene, { pointProbe = null } = {}) {
   if (!scene) {
     const domGreen = collectGreenDomCandidates();
     return {
@@ -187,7 +321,8 @@ export async function collectSceneDiagnostics(scene) {
       message: "The managed Ghost Ship scene is not currently installed in this world.",
       greenDomCandidates: domGreen,
       greenArtifactCandidates: domGreen.length,
-      raw: { available: false, greenDomCandidates: domGreen }
+      pointProbe,
+      raw: { available: false, greenDomCandidates: domGreen, pointProbe }
     };
   }
 
@@ -203,6 +338,7 @@ export async function collectSceneDiagnostics(scene) {
     ...drawings.filter(item => item.green).map(item => ({ type: "Drawing", id: item.id, reason: "green fill/stroke", detail: `${item.fill} / ${item.stroke}` }))
   ];
   const greenDomCandidates = collectGreenDomCandidates();
+  const pickedPoint = pointProbe ?? null;
   const background = await probeImage(String(scene.background?.src ?? ""));
   const canvas = canvasTelemetry(scene);
   const counts = {
@@ -225,6 +361,7 @@ export async function collectSceneDiagnostics(scene) {
   if (greenSceneCandidates.length) warnings.push(`${greenSceneCandidates.length} scene document(s) could plausibly create a large visual overlay.`);
   if (greenDomCandidates.length) warnings.push(`${greenDomCandidates.length} visible DOM element(s) have a strong green background; the green artifact may be UI/CSS rather than Scene content.`);
   if (!greenSceneCandidates.length && greenDomCandidates.length) warnings.push("No green Scene documents were found while green UI surfaces were detected. This strongly points away from the map/wall/light data.");
+  if (pickedPoint?.stack?.length) warnings.push(`Direct artifact-point probe captured ${pickedPoint.stack.length} DOM layer(s) at x${pickedPoint.x}, y${pickedPoint.y}; inspect the point stack and matching CSS rules.`);
 
   const raw = {
     generatedAt: new Date().toISOString(),
@@ -240,6 +377,7 @@ export async function collectSceneDiagnostics(scene) {
     drawings,
     greenSceneCandidates,
     greenDomCandidates,
+    pointProbe: pickedPoint,
     warnings
   };
 
@@ -261,8 +399,11 @@ export async function collectSceneDiagnostics(scene) {
     hasWarnings: warnings.length > 0,
     greenSceneCandidates,
     greenDomCandidates,
+    pointProbe: pickedPoint,
     greenArtifactCandidates: greenSceneCandidates.length + greenDomCandidates.length,
-    artifactAssessment: greenSceneCandidates.length
+    artifactAssessment: pickedPoint?.stack?.length
+      ? `A direct DOM stack was captured at x${pickedPoint.x}, y${pickedPoint.y}. Use that stack and its matching CSS rules as the primary artifact evidence.`
+      : greenSceneCandidates.length
       ? "Scene-level visual suspects were found. Inspect their IDs and properties below."
       : greenDomCandidates.length
         ? "No green Scene documents were found, but strong-green browser UI surfaces were detected. The artifact is likely being painted by UI/CSS or another module/system layer."
