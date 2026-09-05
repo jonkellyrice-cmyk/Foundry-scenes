@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "id": "map-asset-provisioning",
+  "phase": "map-asset-provisioning",
+  "summary": "Copy the bundled Ghost Ship map into Foundry world storage with a raw-GitHub fallback, and include a locked full-scene floor tile so the art does not depend solely on Scene background rendering.",
+  "operations": [
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "const MAP_PATH = `modules/${MODULE_ID}/assets/maps/signatory-ghost-ship.webp`;\n",
+      "after": "const MAP_PATH = `modules/${MODULE_ID}/assets/maps/signatory-ghost-ship.webp`;\nconst MAP_REMOTE_FALLBACK = \"https://raw.githubusercontent.com/jonkellyrice-cmyk/Foundry-scenes/main/assets/maps/signatory-ghost-ship.webp\";\nconst MAP_FILENAME = \"signatory-ghost-ship.webp\";\n",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "export function getGhostShipSceneData() {\n",
+      "after": "function makeGhostShipMapTile(src) {\n  return {\n    texture: { src, fit: \"fill\" },\n    x: 0,\n    y: 0,\n    width: 1672,\n    height: 941,\n    elevation: -1000,\n    sort: -1000,\n    rotation: 0,\n    alpha: 1,\n    hidden: false,\n    locked: true,\n    restrictions: { light: false, weather: false },\n    flags: {\n      [MODULE_ID]: {\n        ghostShipMapFloor: true,\n        sourceVersion: GHOST_SHIP_TEMPLATE_VERSION\n      }\n    }\n  };\n}\n\nasync function fetchGhostShipMapBlob() {\n  const failures = [];\n  for (const source of [MAP_PATH, MAP_REMOTE_FALLBACK]) {\n    try {\n      const response = await fetch(source, { cache: \"no-store\" });\n      if (!response.ok) throw new Error(`HTTP ${response.status}`);\n      const blob = await response.blob();\n      if (!blob.size) throw new Error(\"empty image response\");\n      return blob;\n    } catch (error) {\n      failures.push(`${source}: ${error?.message ?? error}`);\n    }\n  }\n  throw new Error(`Could not load the bundled Ghost Ship artwork. ${failures.join(\" | \")}`);\n}\n\nasync function provisionGhostShipMapAsset() {\n  const FilePicker = foundry.applications.apps.FilePicker?.implementation ?? globalThis.FilePicker;\n  const worldId = game.world?.id;\n  if (!FilePicker || !worldId) throw new Error(\"Foundry FilePicker or world ID is unavailable.\");\n\n  const directories = [\n    `worlds/${worldId}/orphaned-sun-scenes`,\n    `worlds/${worldId}/orphaned-sun-scenes/maps`\n  ];\n  for (const directory of directories) {\n    try {\n      await FilePicker.createDirectory(\"data\", directory, {});\n    } catch (error) {\n      if (!/exists/i.test(String(error?.message ?? error))) {\n        console.warn(`${MODULE_ID} | Could not create ${directory}`, error);\n      }\n    }\n  }\n\n  const blob = await fetchGhostShipMapBlob();\n  const file = new File([blob], MAP_FILENAME, { type: blob.type || \"image/webp\" });\n  const directory = directories.at(-1);\n  const response = await FilePicker.upload(\"data\", directory, file, {}, { notify: false });\n  const path = typeof response?.path === \"string\" && response.path ? response.path : `${directory}/${MAP_FILENAME}`;\n  console.info(`${MODULE_ID} | Provisioned Ghost Ship artwork at ${path}`);\n  return path;\n}\n\nexport function getGhostShipSceneData() {\n",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "    walls: buildGhostShipWalls(),\n    lights: buildGhostShipLights(),\n    flags: {\n",
+      "after": "    walls: buildGhostShipWalls(),\n    lights: buildGhostShipLights(),\n    tiles: [makeGhostShipMapTile(MAP_PATH)],\n    flags: {\n",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "  const scene = await Scene.create(getGhostShipSceneData());\n  await game.settings.set(MODULE_ID, \"ghostShipSeedVersion\", GHOST_SHIP_TEMPLATE_VERSION);\n",
+      "after": "  const mapSrc = await provisionGhostShipMapAsset();\n  const sceneData = getGhostShipSceneData();\n  sceneData.background.src = mapSrc;\n  sceneData.tiles = [makeGhostShipMapTile(mapSrc)];\n  const scene = await Scene.create(sceneData);\n  await game.settings.set(MODULE_ID, \"ghostShipSeedVersion\", GHOST_SHIP_TEMPLATE_VERSION);\n",
+      "expectedOccurrences": 1
+    }
+  ],
+  "checks": [
+    {
+      "name": "Ghost Ship script syntax",
+      "run": "node --check scripts/orphaned-sun-scenes.mjs"
+    },
+    {
+      "name": "Map asset provisioning and floor tile are present",
+      "run": "grep -q 'provisionGhostShipMapAsset' scripts/orphaned-sun-scenes.mjs && grep -q 'MAP_REMOTE_FALLBACK' scripts/orphaned-sun-scenes.mjs && grep -q 'ghostShipMapFloor' scripts/orphaned-sun-scenes.mjs && grep -Fq 'tiles: [makeGhostShipMapTile(MAP_PATH)]' scripts/orphaned-sun-scenes.mjs"
+    }
+  ]
+}

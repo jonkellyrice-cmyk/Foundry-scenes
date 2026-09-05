@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "project": "ghost-ship-map-delivery-fix",
+  "title": "Make the Ghost Ship artwork reliably visible on Forge",
+  "status": "ready",
+  "phases": [
+    {
+      "order": 1,
+      "id": "map-asset-provisioning",
+      "title": "Provision the bundled Ghost Ship map into world storage and provide a redundant floor tile",
+      "patch": "patches/001-map-asset-provisioning.patch.json"
+    },
+    {
+      "order": 2,
+      "id": "managed-scene-repair",
+      "title": "Repair already-created Ghost Ship scenes without touching walls, doors, lights, or tokens",
+      "patch": "patches/002-managed-scene-repair.patch.json"
+    },
+    {
+      "order": 3,
+      "id": "release-0-3-2",
+      "title": "Publish the map delivery repair as module 0.3.2",
+      "patch": "patches/003-release-0-3-2.patch.json"
+    }
+  ],
+  "finalChecks": [
+    {
+      "name": "Module JavaScript syntax",
+      "run": "find scripts -name '*.mjs' -print0 | xargs -0 -n1 node --check"
+    },
+    {
+      "name": "World-storage map provisioning exists",
+      "run": "grep -q 'provisionGhostShipMapAsset' scripts/orphaned-sun-scenes.mjs && grep -q 'FilePicker.upload' scripts/orphaned-sun-scenes.mjs && grep -q 'raw.githubusercontent.com/jonkellyrice-cmyk/Foundry-scenes/main/assets/maps/signatory-ghost-ship.webp' scripts/orphaned-sun-scenes.mjs"
+    },
+    {
+      "name": "Redundant floor tile exists",
+      "run": "grep -q 'ghostShipMapFloor' scripts/orphaned-sun-scenes.mjs && grep -q 'createEmbeddedDocuments(\"Tile\"' scripts/orphaned-sun-scenes.mjs"
+    },
+    {
+      "name": "Manifest version",
+      "run": "node -e \"const m=JSON.parse(require('fs').readFileSync('module.json','utf8')); if(m.version!=='0.3.2') throw new Error('expected module 0.3.2');\""
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "managed-scene-repair",
+  "phase": "managed-scene-repair",
+  "summary": "Migrate the already-created managed Ghost Ship in place by provisioning the artwork to world storage, repointing only the background image when needed, and adding a locked floor tile while preserving walls, doors, lights, tokens, and other scene edits.",
+  "operations": [
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "export async function repairGhostShipVisibility(scene = null) {\n  if (!game.user?.isGM) throw new Error(\"Only a GM can repair bundled scenes.\");\n  const target = scene ?? game.scenes.find(candidate => candidate.getFlag(MODULE_ID, \"sceneKey\") === GHOST_SHIP_KEY) ?? null;\n  if (!target) return null;\n\n  const backgroundSrc = String(target.background?.src ?? \"\");\n  const backgroundMissing = !backgroundSrc;\n  const usesBundledBackground = backgroundMissing || backgroundSrc === MAP_PATH;\n  const darkness = Number(target.environment?.darknessLevel ?? 0);\n  const legacyBlackPreset = usesBundledBackground && darkness >= 0.84;\n  if (!backgroundMissing && !legacyBlackPreset) return target;\n\n  const update = {\n    [`flags.${MODULE_ID}.sourceVersion`]: GHOST_SHIP_TEMPLATE_VERSION\n  };\n  if (backgroundMissing) update[\"background.src\"] = MAP_PATH;\n  if (legacyBlackPreset) {\n    update[\"environment.darknessLevel\"] = 0.58;\n    update[\"environment.darknessLevelLock\"] = false;\n  }\n\n  await target.update(update);\n  ui.notifications?.info(\"Orphaned Sun Scenes: repaired Ghost Ship visibility. The map should now be readable while retaining dynamic horror lighting.\");\n  return target;\n}\n",
+      "after": "export async function repairGhostShipVisibility(scene = null) {\n  if (!game.user?.isGM) throw new Error(\"Only a GM can repair bundled scenes.\");\n  const target = scene ?? game.scenes.find(candidate => candidate.getFlag(MODULE_ID, \"sceneKey\") === GHOST_SHIP_KEY) ?? null;\n  if (!target) return null;\n\n  const backgroundSrc = String(target.background?.src ?? \"\");\n  const backgroundMissing = !backgroundSrc;\n  const usesBundledBackground = backgroundMissing || backgroundSrc === MAP_PATH;\n  const darkness = Number(target.environment?.darknessLevel ?? 0);\n  const legacyBlackPreset = usesBundledBackground && darkness >= 0.84;\n  const floorTiles = Array.from(target.tiles ?? []);\n  const hasManagedFloorTile = floorTiles.some(tile => tile.getFlag?.(MODULE_ID, \"ghostShipMapFloor\"));\n  const needsMapDeliveryRepair = usesBundledBackground || !hasManagedFloorTile;\n  if (!needsMapDeliveryRepair && !legacyBlackPreset) return target;\n\n  let mapSrc = backgroundSrc;\n  if (needsMapDeliveryRepair) mapSrc = await provisionGhostShipMapAsset();\n\n  const update = {\n    [`flags.${MODULE_ID}.sourceVersion`]: GHOST_SHIP_TEMPLATE_VERSION\n  };\n  if (usesBundledBackground && mapSrc) update[\"background.src\"] = mapSrc;\n  if (legacyBlackPreset) {\n    update[\"environment.darknessLevel\"] = 0.58;\n    update[\"environment.darknessLevelLock\"] = false;\n  }\n\n  await target.update(update);\n  if (!hasManagedFloorTile && mapSrc) {\n    await target.createEmbeddedDocuments(\"Tile\", [makeGhostShipMapTile(mapSrc)]);\n  }\n\n  ui.notifications?.info(\"Orphaned Sun Scenes: repaired Ghost Ship map delivery without changing walls, doors, lights, or tokens.\");\n  return target;\n}\n",
+      "expectedOccurrences": 1
+    }
+  ],
+  "checks": [
+    {
+      "name": "Ghost Ship script syntax",
+      "run": "node --check scripts/orphaned-sun-scenes.mjs"
+    },
+    {
+      "name": "Managed map-only migration exists",
+      "run": "grep -q 'needsMapDeliveryRepair' scripts/orphaned-sun-scenes.mjs && grep -q 'createEmbeddedDocuments(\"Tile\"' scripts/orphaned-sun-scenes.mjs && grep -q 'without changing walls, doors, lights, or tokens' scripts/orphaned-sun-scenes.mjs"
+    }
+  ]
+}
