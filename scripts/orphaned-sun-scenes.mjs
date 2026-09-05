@@ -65,7 +65,12 @@ function wallData(c, { door = 0, state = 0 } = {}) {
     door,
     ds: state,
     threshold: { light: null, sight: null, sound: null, attenuation: false },
-    flags: {}
+    flags: {
+      [MODULE_ID]: {
+        ghostShipManagedWall: true,
+        sourceVersion: GHOST_SHIP_TEMPLATE_VERSION
+      }
+    }
   };
 }
 
@@ -277,11 +282,52 @@ async function replaceGhostShipManagedLights(scene) {
   await scene.createEmbeddedDocuments("AmbientLight", freshLights);
 }
 
+async function replaceGhostShipManagedWalls(scene, { replaceLegacyAll = false } = {}) {
+  const existing = Array.from(scene?.walls ?? []).filter(wall =>
+    replaceLegacyAll || Boolean(wall.getFlag?.(MODULE_ID, "ghostShipManagedWall"))
+  );
+  if (existing.length) {
+    await scene.deleteEmbeddedDocuments("Wall", existing.map(wall => wall.id));
+  }
+  await scene.createEmbeddedDocuments("Wall", buildGhostShipWalls());
+}
+
+function captureGhostShipTokenMapPositions(scene) {
+  const sceneX = Number(scene?.dimensions?.sceneX ?? 0);
+  const sceneY = Number(scene?.dimensions?.sceneY ?? 0);
+  return Array.from(scene?.tokens ?? []).map(token => ({
+    id: token.id,
+    mapX: Number(token.x ?? 0) - sceneX,
+    mapY: Number(token.y ?? 0) - sceneY
+  }));
+}
+
+async function preserveGhostShipTokenMapPositions(scene, positions = []) {
+  if (!positions.length) return;
+  const sceneX = Number(scene?.dimensions?.sceneX ?? 0);
+  const sceneY = Number(scene?.dimensions?.sceneY ?? 0);
+  const updates = positions.map(position => ({
+    _id: position.id,
+    x: position.mapX + sceneX,
+    y: position.mapY + sceneY
+  }));
+  await scene.updateEmbeddedDocuments("Token", updates);
+}
+
 function getGhostShipManagedFloorTiles(scene) {
   return Array.from(scene?.tiles ?? []).filter(tile => {
     const flagged = Boolean(tile.getFlag?.(MODULE_ID, "ghostShipMapFloor"));
     const src = String(tile.texture?.src ?? "");
-    return flagged || src.includes("signatory-ghost-ship");
+    const legacyUnderlaySignature = Number(tile.elevation ?? 0) <= -900 && Number(tile.sort ?? 0) <= -900;
+    const legacyFullSceneSignature = Boolean(tile.locked)
+      && Math.abs(Number(tile.x ?? 0)) < 2
+      && Math.abs(Number(tile.y ?? 0)) < 2
+      && Math.abs(Number(tile.width ?? 0) - 1672) < 2
+      && Math.abs(Number(tile.height ?? 0) - 941) < 2;
+    return flagged
+      || src.includes("signatory-ghost-ship")
+      || legacyUnderlaySignature
+      || legacyFullSceneSignature;
   });
 }
 
@@ -420,18 +466,43 @@ export async function repairGhostShipVisibility(scene = null) {
   const managedFloorTiles = getGhostShipManagedFloorTiles(target);
   const hasLegacyWebpReference = backgroundSrc.includes("signatory-ghost-ship.webp")
     || managedFloorTiles.some(tile => String(tile.texture?.src ?? "").includes("signatory-ghost-ship.webp"));
+  const backgroundTransformIsCanonical = Number(target.background?.scaleX ?? 1) === 1
+    && Number(target.background?.scaleY ?? 1) === 1
+    && Number(target.background?.offsetX ?? 0) === 0
+    && Number(target.background?.offsetY ?? 0) === 0
+    && Number(target.background?.rotation ?? 0) === 0;
+  const sceneGeometryIsCanonical = Number(target.width ?? 0) === 1672
+    && Number(target.height ?? 0) === 941
+    && Number(target.padding ?? 0) === 0
+    && backgroundTransformIsCanonical;
   const needsVersionedMapRepair = sourceVersion !== GHOST_SHIP_TEMPLATE_VERSION;
+  const needsGeometryRealignment = needsVersionedMapRepair || !sceneGeometryIsCanonical;
   const needsMapDeliveryRepair = usesBundledBackground || needsVersionedMapRepair || hasLegacyWebpReference;
   const needsObsoleteFloorCleanup = managedFloorTiles.length > 0;
-  if (!needsMapDeliveryRepair && !legacyOverdarkPreset && !needsObsoleteFloorCleanup) return target;
+  if (!needsMapDeliveryRepair && !legacyOverdarkPreset && !needsObsoleteFloorCleanup && !needsGeometryRealignment) return target;
 
+  const tokenMapPositions = needsGeometryRealignment ? captureGhostShipTokenMapPositions(target) : [];
   let mapSrc = backgroundSrc;
   if (needsMapDeliveryRepair) mapSrc = await provisionGhostShipMapAsset();
 
   const update = {
     [`flags.${MODULE_ID}.sourceVersion`]: GHOST_SHIP_TEMPLATE_VERSION
   };
-  if (mapSrc) update["background.src"] = mapSrc;
+  if (needsGeometryRealignment) {
+    update.width = 1672;
+    update.height = 941;
+    update.padding = 0;
+    update.background = {
+      src: mapSrc || backgroundSrc || MAP_PATH,
+      scaleX: 1,
+      scaleY: 1,
+      offsetX: 0,
+      offsetY: 0,
+      rotation: 0
+    };
+  } else if (mapSrc) {
+    update["background.src"] = mapSrc;
+  }
   if (legacyOverdarkPreset) {
     update["environment.darknessLevel"] = 0.42;
     update["environment.darknessLevelLock"] = false;
@@ -441,11 +512,24 @@ export async function repairGhostShipVisibility(scene = null) {
     await target.deleteEmbeddedDocuments("Tile", managedFloorTiles.map(tile => tile.id));
   }
   await target.update(update);
-  if (needsVersionedMapRepair) {
+
+  if (needsGeometryRealignment) {
+    await replaceGhostShipManagedWalls(target, { replaceLegacyAll: true });
     await replaceGhostShipManagedLights(target);
+    await preserveGhostShipTokenMapPositions(target, tokenMapPositions);
   }
 
-  ui.notifications?.info("Orphaned Sun Scenes: repaired the Ghost Ship map layer and refreshed its dynamic lights.");
+  console.info(`${MODULE_ID} | Ghost Ship scene geometry normalized`, {
+    width: target.width,
+    height: target.height,
+    padding: target.padding,
+    sceneX: target.dimensions?.sceneX,
+    sceneY: target.dimensions?.sceneY,
+    walls: target.walls?.size ?? 0,
+    lights: target.lights?.size ?? 0,
+    tiles: target.tiles?.size ?? 0
+  });
+  ui.notifications?.info("Orphaned Sun Scenes: realigned the Ghost Ship map, walls, doors, and lights to the same zero-padding canvas.");
   return target;
 }
 
