@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "project": "scene-library-diagnostics-v1",
   "title": "Scene Library Diagnostics tab and runtime telemetry",
-  "status": "draft",
+  "status": "ready",
   "phases": [
     {
       "order": 1,
