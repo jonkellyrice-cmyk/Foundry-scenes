@@ -39,6 +39,13 @@ function normalizeRepoPath(input) {
     die(`Unsafe path outside repository: ${input}`);
   }
   if (normalized === '.git' || normalized.startsWith('.git/')) die(`Patch operations may not modify .git: ${input}`);
+  if (normalized.startsWith('.governor/')) die(`Governed patches may not modify governor plans or history: ${input}`);
+  if (normalized === 'dev/patch-governor.mjs' || normalized === 'dev/patch-governor.test.mjs') {
+    die(`Governed patches may not modify the governor engine: ${input}`);
+  }
+  if (normalized === '.github/workflows/patch-governor.yml') {
+    die(`Governed patches may not modify the governor workflow: ${input}`);
+  }
   return normalized;
 }
 
@@ -85,8 +92,10 @@ function validateOperation(operation, context) {
     }
   }
 
-  if (op === 'delete' && operation.expectedSha256 !== undefined && (typeof operation.expectedSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(operation.expectedSha256))) {
-    die(`${context}: delete.expectedSha256 must be a lowercase SHA-256 hex string.`);
+  if (op === 'delete') {
+    if (typeof operation.expectedSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(operation.expectedSha256)) {
+      die(`${context}: delete.expectedSha256 is required and must be a lowercase SHA-256 hex string.`);
+    }
   }
 
   if (op === 'json-set') {
