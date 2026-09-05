@@ -390,11 +390,14 @@ export async function repairGhostShipVisibility(scene = null) {
   const backgroundSrc = String(target.background?.src ?? "");
   const backgroundMissing = !backgroundSrc;
   const usesBundledBackground = backgroundMissing || backgroundSrc === MAP_PATH;
+  const sourceVersion = String(target.getFlag(MODULE_ID, "sourceVersion") ?? "");
   const darkness = Number(target.environment?.darknessLevel ?? 0);
-  const legacyBlackPreset = usesBundledBackground && darkness >= 0.84;
+  const legacyBlackPreset = darkness >= 0.84;
   const floorTiles = Array.from(target.tiles ?? []);
-  const hasManagedFloorTile = floorTiles.some(tile => tile.getFlag?.(MODULE_ID, "ghostShipMapFloor"));
-  const needsMapDeliveryRepair = usesBundledBackground || !hasManagedFloorTile;
+  const managedFloorTile = floorTiles.find(tile => tile.getFlag?.(MODULE_ID, "ghostShipMapFloor")) ?? null;
+  const hasManagedFloorTile = Boolean(managedFloorTile);
+  const needsVersionedMapRepair = sourceVersion !== "0.3.3";
+  const needsMapDeliveryRepair = usesBundledBackground || !hasManagedFloorTile || needsVersionedMapRepair;
   if (!needsMapDeliveryRepair && !legacyBlackPreset) return target;
 
   let mapSrc = backgroundSrc;
@@ -403,14 +406,20 @@ export async function repairGhostShipVisibility(scene = null) {
   const update = {
     [`flags.${MODULE_ID}.sourceVersion`]: GHOST_SHIP_TEMPLATE_VERSION
   };
-  if (usesBundledBackground && mapSrc) update["background.src"] = mapSrc;
+  if (mapSrc) update["background.src"] = mapSrc;
   if (legacyBlackPreset) {
     update["environment.darknessLevel"] = 0.58;
     update["environment.darknessLevelLock"] = false;
   }
 
   await target.update(update);
-  if (!hasManagedFloorTile && mapSrc) {
+  if (managedFloorTile && mapSrc) {
+    await target.updateEmbeddedDocuments("Tile", [{
+      _id: managedFloorTile.id,
+      "texture.src": mapSrc,
+      [`flags.${MODULE_ID}.sourceVersion`]: GHOST_SHIP_TEMPLATE_VERSION
+    }]);
+  } else if (mapSrc) {
     await target.createEmbeddedDocuments("Tile", [makeGhostShipMapTile(mapSrc)]);
   }
 
