@@ -358,9 +358,16 @@ export function getGhostShipSceneData() {
     navName: "Ghost Ship",
     width: 1672,
     height: 941,
-    padding: 0.04,
+    padding: 0,
     backgroundColor: "#05070b",
-    background: { src: MAP_PATH },
+    background: {
+      src: MAP_PATH,
+      scaleX: 1,
+      scaleY: 1,
+      offsetX: 0,
+      offsetY: 0,
+      rotation: 0
+    },
     grid: {
       type: 1,
       size: 50,
