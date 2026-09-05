@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "project": "scene-library-diagnostics-v2",
+  "title": "Scene Library diagnostics point picker and viewport-accurate green artifact telemetry",
+  "status": "ready",
+  "phases": [
+    {
+      "order": 1,
+      "id": "viewport-and-point-probe",
+      "title": "Filter false-positive offscreen green surfaces and add click-point DOM/CSS probe",
+      "patch": "patches/001-viewport-and-point-probe.patch.json"
+    },
+    {
+      "order": 2,
+      "id": "point-probe-ui",
+      "title": "Expose Pick Artifact Point and point-stack telemetry in Scene Library Diagnostics",
+      "patch": "patches/002-point-probe-ui.patch.json"
+    },
+    {
+      "order": 3,
+      "id": "release-0-3-9",
+      "title": "Publish enhanced diagnostics as module 0.3.9",
+      "patch": "patches/003-release-0-3-9.patch.json"
+    }
+  ],
+  "finalChecks": [
+    {
+      "name": "Module JavaScript syntax",
+      "run": "find scripts -name '*.mjs' -print0 | xargs -0 -n1 node --check"
+    },
+    {
+      "name": "Point probe engine present",
+      "run": "grep -q 'collectDomPointProbe' scripts/scene-diagnostics.mjs && grep -q 'rectIntersectsViewport' scripts/scene-diagnostics.mjs"
+    },
+    {
+      "name": "Point probe UI wired",
+      "run": "grep -q 'diagnosticsPickPoint' scripts/scene-library.mjs && grep -q 'Pick artifact point' templates/scene-library.hbs"
+    },
+    {
+      "name": "Manifest version",
+      "run": "node -e \"const m=JSON.parse(require('fs').readFileSync('module.json','utf8')); if(m.version!=='0.3.9') throw new Error('expected module 0.3.9');\""
+    }
+  ]
+}

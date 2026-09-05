@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "id": "viewport-and-point-probe",
+  "phase": "viewport-and-point-probe",
+  "summary": "Reject off-screen green DOM false positives and add a direct elementsFromPoint/CSS provenance probe for a clicked artifact location.",
+  "operations": [
+    {
+      "op": "replace",
+      "path": "scripts/scene-diagnostics.mjs",
+      "before": "function collectGreenDomCandidates() {\n  if (!globalThis.document?.body || !globalThis.getComputedStyle) return [];\n  const candidates = [];\n  const elements = Array.from(document.body.querySelectorAll(\"*\")).slice(0, 5000);\n  for (const element of elements) {\n    const rect = element.getBoundingClientRect?.();\n    if (!rect || rect.width < 20 || rect.height < 20 || rect.width * rect.height < 5000) continue;\n    const style = getComputedStyle(element);\n    if (!isStrongGreen(style.backgroundColor)) continue;\n    candidates.push({\n      tag: element.tagName?.toLowerCase?.() ?? \"?\",\n      id: element.id || \"\",\n      classes: Array.from(element.classList ?? []).slice(0, 6).join(\".\"),\n      background: style.backgroundColor,\n      position: style.position,\n      zIndex: style.zIndex,\n      x: Math.round(rect.x),\n      y: Math.round(rect.y),\n      width: Math.round(rect.width),\n      height: Math.round(rect.height),\n      area: Math.round(rect.width * rect.height)\n    });\n  }\n  candidates.sort((a, b) => b.area - a.area);\n  return candidates.slice(0, 20);\n}\n",
+      "after": "function rectIntersectsViewport(rect) {\n  const width = globalThis.innerWidth ?? document.documentElement?.clientWidth ?? 0;\n  const height = globalThis.innerHeight ?? document.documentElement?.clientHeight ?? 0;\n  return rect.right > 0 && rect.bottom > 0 && rect.left < width && rect.top < height;\n}\n\nfunction domIdentity(element) {\n  return {\n    tag: element?.tagName?.toLowerCase?.() ?? \"?\",\n    id: element?.id || \"\",\n    classes: Array.from(element?.classList ?? []).slice(0, 8).join(\".\")\n  };\n}\n\nfunction pseudoTelemetry(element, pseudo) {\n  try {\n    const style = getComputedStyle(element, pseudo);\n    return {\n      background: style.backgroundColor,\n      backgroundImage: style.backgroundImage,\n      boxShadow: style.boxShadow,\n      content: style.content,\n      display: style.display,\n      opacity: style.opacity,\n      green: isStrongGreen(style.backgroundColor)\n    };\n  } catch {\n    return null;\n  }\n}\n\nfunction matchingVisualRules(element) {\n  if (!globalThis.document?.styleSheets || !element?.matches) return [];\n  const matches = [];\n  const interesting = /(background(?:-color|-image)?|box-shadow|filter|opacity|mix-blend-mode|clip-path)\\s*:/i;\n\n  function visitRules(rules, source, depth = 0) {\n    if (!rules || depth > 4 || matches.length >= 30) return;\n    for (const rule of Array.from(rules)) {\n      if (matches.length >= 30) break;\n      if (rule.selectorText && rule.style) {\n        let matched = false;\n        try {\n          matched = element.matches(rule.selectorText);\n        } catch {\n          matched = false;\n        }\n        const cssText = rule.style.cssText ?? \"\";\n        if (matched && interesting.test(cssText)) {\n          matches.push({\n            source,\n            selector: rule.selectorText,\n            css: cssText\n          });\n        }\n      }\n      if (rule.cssRules) {\n        try {\n          visitRules(rule.cssRules, source, depth + 1);\n        } catch {\n          // Cross-origin or unsupported nested stylesheet rule.\n        }\n      }\n    }\n  }\n\n  for (const sheet of Array.from(document.styleSheets)) {\n    let rules;\n    try {\n      rules = sheet.cssRules;\n    } catch {\n      continue;\n    }\n    visitRules(rules, sheet.href || \"inline stylesheet\");\n  }\n  return matches;\n}\n\nfunction elementPointTelemetry(element, rank) {\n  const rect = element.getBoundingClientRect?.();\n  const style = getComputedStyle(element);\n  const before = pseudoTelemetry(element, \"::before\");\n  const after = pseudoTelemetry(element, \"::after\");\n  return {\n    rank,\n    ...domIdentity(element),\n    x: Math.round(rect?.x ?? 0),\n    y: Math.round(rect?.y ?? 0),\n    width: Math.round(rect?.width ?? 0),\n    height: Math.round(rect?.height ?? 0),\n    background: style.backgroundColor,\n    backgroundImage: style.backgroundImage,\n    boxShadow: style.boxShadow,\n    color: style.color,\n    display: style.display,\n    visibility: style.visibility,\n    position: style.position,\n    zIndex: style.zIndex,\n    opacity: style.opacity,\n    filter: style.filter,\n    mixBlendMode: style.mixBlendMode,\n    isolation: style.isolation,\n    clipPath: style.clipPath,\n    systemColor: style.getPropertyValue(\"--system-color\")?.trim?.() || \"\",\n    green: isStrongGreen(style.backgroundColor) || Boolean(before?.green) || Boolean(after?.green),\n    before,\n    after,\n    visualRules: matchingVisualRules(element)\n  };\n}\n\nexport function collectDomPointProbe(x, y) {\n  if (!globalThis.document?.elementsFromPoint || !globalThis.getComputedStyle) {\n    return { x: Math.round(finite(x)), y: Math.round(finite(y)), stack: [], status: \"elementsFromPoint unavailable\" };\n  }\n  const px = Math.max(0, Math.min((globalThis.innerWidth ?? 1) - 1, finite(x)));\n  const py = Math.max(0, Math.min((globalThis.innerHeight ?? 1) - 1, finite(y)));\n  const stack = document.elementsFromPoint(px, py)\n    .slice(0, 12)\n    .map((element, index) => elementPointTelemetry(element, index + 1));\n  return {\n    x: Math.round(px),\n    y: Math.round(py),\n    status: stack.length ? \"Captured\" : \"No DOM elements at point\",\n    stack,\n    greenStackEntries: stack.filter(item => item.green).length\n  };\n}\n\nfunction collectGreenDomCandidates() {\n  if (!globalThis.document?.body || !globalThis.getComputedStyle) return [];\n  const candidates = [];\n  const elements = Array.from(document.body.querySelectorAll(\"*\")).slice(0, 7000);\n  for (const element of elements) {\n    const rect = element.getBoundingClientRect?.();\n    if (!rect || !rectIntersectsViewport(rect)) continue;\n    if (rect.width < 20 || rect.height < 20 || rect.width * rect.height < 5000) continue;\n    const style = getComputedStyle(element);\n    if (style.display === \"none\" || style.visibility === \"hidden\" || Number(style.opacity) <= 0) continue;\n    const before = pseudoTelemetry(element, \"::before\");\n    const after = pseudoTelemetry(element, \"::after\");\n    if (!isStrongGreen(style.backgroundColor) && !before?.green && !after?.green) continue;\n    candidates.push({\n      ...domIdentity(element),\n      background: style.backgroundColor,\n      backgroundImage: style.backgroundImage,\n      pseudoBefore: before?.background ?? \"\",\n      pseudoAfter: after?.background ?? \"\",\n      position: style.position,\n      zIndex: style.zIndex,\n      x: Math.round(rect.x),\n      y: Math.round(rect.y),\n      width: Math.round(rect.width),\n      height: Math.round(rect.height),\n      area: Math.round(rect.width * rect.height)\n    });\n  }\n  candidates.sort((a, b) => b.area - a.area);\n  return candidates.slice(0, 20);\n}\n",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/scene-diagnostics.mjs",
+      "before": "export async function collectSceneDiagnostics(scene) {",
+      "after": "export async function collectSceneDiagnostics(scene, { pointProbe = null } = {}) {",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/scene-diagnostics.mjs",
+      "before": "      raw: { available: false, greenDomCandidates: domGreen }",
+      "after": "      pointProbe,\n      raw: { available: false, greenDomCandidates: domGreen, pointProbe }",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/scene-diagnostics.mjs",
+      "before": "  const greenDomCandidates = collectGreenDomCandidates();\n  const background = await probeImage(String(scene.background?.src ?? \"\"));",
+      "after": "  const greenDomCandidates = collectGreenDomCandidates();\n  const pickedPoint = pointProbe ?? null;\n  const background = await probeImage(String(scene.background?.src ?? \"\"));",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/scene-diagnostics.mjs",
+      "before": "  if (!greenSceneCandidates.length && greenDomCandidates.length) warnings.push(\"No green Scene documents were found while green UI surfaces were detected. This strongly points away from the map/wall/light data.\");",
+      "after": "  if (!greenSceneCandidates.length && greenDomCandidates.length) warnings.push(\"No green Scene documents were found while green UI surfaces were detected. This strongly points away from the map/wall/light data.\");\n  if (pickedPoint?.stack?.length) warnings.push(`Direct artifact-point probe captured ${pickedPoint.stack.length} DOM layer(s) at x${pickedPoint.x}, y${pickedPoint.y}; inspect the point stack and matching CSS rules.`);",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/scene-diagnostics.mjs",
+      "before": "    greenSceneCandidates,\n    greenDomCandidates,\n    warnings",
+      "after": "    greenSceneCandidates,\n    greenDomCandidates,\n    pointProbe: pickedPoint,\n    warnings",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/scene-diagnostics.mjs",
+      "before": "    greenSceneCandidates,\n    greenDomCandidates,\n    greenArtifactCandidates: greenSceneCandidates.length + greenDomCandidates.length,\n    artifactAssessment: greenSceneCandidates.length",
+      "after": "    greenSceneCandidates,\n    greenDomCandidates,\n    pointProbe: pickedPoint,\n    greenArtifactCandidates: greenSceneCandidates.length + greenDomCandidates.length,\n    artifactAssessment: pickedPoint?.stack?.length\n      ? `A direct DOM stack was captured at x${pickedPoint.x}, y${pickedPoint.y}. Use that stack and its matching CSS rules as the primary artifact evidence.`\n      : greenSceneCandidates.length",
+      "expectedOccurrences": 1
+    }
+  ],
+  "checks": [
+    {
+      "name": "Diagnostics engine syntax",
+      "run": "node --check scripts/scene-diagnostics.mjs"
+    },
+    {
+      "name": "Offscreen filtering present",
+      "run": "grep -q 'rectIntersectsViewport' scripts/scene-diagnostics.mjs"
+    },
+    {
+      "name": "Point probe export present",
+      "run": "grep -q 'export function collectDomPointProbe' scripts/scene-diagnostics.mjs"
+    },
+    {
+      "name": "CSS provenance capture present",
+      "run": "grep -q 'matchingVisualRules' scripts/scene-diagnostics.mjs"
+    }
+  ]
+}
