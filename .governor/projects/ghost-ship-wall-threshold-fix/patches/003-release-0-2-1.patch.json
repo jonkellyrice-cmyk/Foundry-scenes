@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "release-0-2-1",
+  "phase": "release-0-2-1",
+  "summary": "Align the bundled Ghost Ship seed version with the module release and bump the Forge-distributed module to 0.2.1.",
+  "operations": [
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "const MODULE_VERSION = \"0.1.0\";",
+      "after": "const MODULE_VERSION = \"0.2.1\";",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "json-set",
+      "path": "module.json",
+      "keyPath": ["version"],
+      "expected": "0.2.0",
+      "value": "0.2.1"
+    }
+  ],
+  "checks": [
+    {
+      "name": "Manifest parses at 0.2.1",
+      "run": "node -e \"const m=JSON.parse(require('fs').readFileSync('module.json','utf8')); if(m.version!=='0.2.1') throw new Error('expected module 0.2.1');\""
+    },
+    {
+      "name": "Seed and module release versions agree",
+      "run": "node -e \"const s=require('fs').readFileSync('scripts/orphaned-sun-scenes.mjs','utf8'); if(!s.includes('const MODULE_VERSION = \\\"0.2.1\\\";')) throw new Error('Ghost Ship seed version mismatch');\""
+    }
+  ]
+}
