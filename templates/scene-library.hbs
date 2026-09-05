@@ -1,0 +1,106 @@
+<section class="os-library-shell">
+  <header class="os-library-summary">
+    <div>
+      <p class="os-library-kicker">MODULE v{{moduleVersion}}</p>
+      <h2>Scene Library</h2>
+      <p>Import a bundled scene into this world, then use Foundry's normal scene tools to modify the world copy however you like.</p>
+    </div>
+    <div class="os-library-summary-stats" aria-label="Scene library summary">
+      <strong>{{installedCount}} / {{sceneCount}}</strong>
+      <span>in world</span>
+    </div>
+  </header>
+
+  <div class="os-library-toolbar">
+    <button type="button" data-action="refresh">
+      <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i>
+      Refresh
+    </button>
+    <button type="button" data-action="toggleAutoCreate">
+      <i class="fa-solid {{#if autoCreate}}fa-toggle-on{{else}}fa-toggle-off{{/if}}" aria-hidden="true"></i>
+      First scene auto-create: {{#if autoCreate}}On{{else}}Off{{/if}}
+    </button>
+  </div>
+
+  <div class="os-scene-list">
+    {{#each scenes}}
+      <article class="os-scene-card" data-scene-key="{{key}}">
+        <div class="os-scene-preview">
+          <img src="{{preview}}" alt="Preview of {{title}}">
+          <span class="os-scene-status {{#if installed}}is-installed{{else}}is-library{{/if}}">
+            {{#if installed}}In World{{else}}Bundled{{/if}}
+          </span>
+        </div>
+
+        <div class="os-scene-body">
+          <div class="os-scene-title-row">
+            <div>
+              <h3>{{title}}</h3>
+              <p class="os-scene-subtitle">{{subtitle}}</p>
+            </div>
+            {{#if installed}}
+              <i class="fa-solid fa-circle-check os-installed-icon" title="Imported into this world" aria-label="Imported into this world"></i>
+            {{/if}}
+          </div>
+
+          <p class="os-scene-description">{{description}}</p>
+
+          <div class="os-scene-tags" aria-label="Scene tags">
+            {{#each tags}}<span>{{this}}</span>{{/each}}
+          </div>
+
+          <dl class="os-scene-metrics">
+            <div><dt>Walls</dt><dd>{{wallCount}}</dd></div>
+            <div><dt>Doors</dt><dd>{{doorCount}}</dd></div>
+            <div><dt>Lights</dt><dd>{{lightCount}}</dd></div>
+            <div><dt>Source</dt><dd>{{sourceVersion}}</dd></div>
+          </dl>
+
+          {{#if installed}}
+            <div class="os-primary-actions">
+              <button type="button" data-action="openScene">
+                <i class="fa-solid fa-eye" aria-hidden="true"></i> Open
+              </button>
+              <button type="button" data-action="editWalls">
+                <i class="fa-solid fa-vector-square" aria-hidden="true"></i> Walls
+              </button>
+              <button type="button" data-action="editLighting">
+                <i class="fa-solid fa-lightbulb" aria-hidden="true"></i> Lighting
+              </button>
+              <button type="button" data-action="configureScene">
+                <i class="fa-solid fa-sliders" aria-hidden="true"></i> Configure
+              </button>
+            </div>
+
+            <details class="os-scene-advanced">
+              <summary>Scene management</summary>
+              <div class="os-secondary-actions">
+                <button type="button" data-action="duplicateScene">
+                  <i class="fa-solid fa-copy" aria-hidden="true"></i> Create Working Copy
+                </button>
+                <button type="button" data-action="restoreScene">
+                  <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> Restore Bundled Version
+                </button>
+                <button type="button" class="danger" data-action="removeScene">
+                  <i class="fa-solid fa-trash" aria-hidden="true"></i> Remove From World
+                </button>
+              </div>
+              <p class="hint">A Working Copy is independent of the module-managed scene. Restoring the bundled version does not touch working copies.</p>
+            </details>
+          {{else}}
+            <div class="os-primary-actions">
+              <button type="button" data-action="importScene">
+                <i class="fa-solid fa-file-import" aria-hidden="true"></i> Import To World
+              </button>
+            </div>
+          {{/if}}
+        </div>
+      </article>
+    {{/each}}
+  </div>
+
+  <footer class="os-library-footer">
+    <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+    <span>Imported scenes are normal Foundry scenes. Edit walls, lights, doors, sounds, tokens, and scene settings normally; the module will not silently overwrite those edits.</span>
+  </footer>
+</section>
