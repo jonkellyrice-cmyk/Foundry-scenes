@@ -1,0 +1,29 @@
+name: Governor Self Test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'dev/patch-governor.mjs'
+      - 'dev/patch-governor.test.mjs'
+      - '.governor/templates/**'
+      - '.github/workflows/patch-governor.yml'
+      - '.github/workflows/governor-self-test.yml'
+      - 'package.json'
+      - 'docs/PATCH_GOVERNOR.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  self-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check governor syntax
+        run: |
+          node --check dev/patch-governor.mjs
+          node --check dev/patch-governor.test.mjs
+      - name: Run governor regression suite
+        run: npm run governor:test
