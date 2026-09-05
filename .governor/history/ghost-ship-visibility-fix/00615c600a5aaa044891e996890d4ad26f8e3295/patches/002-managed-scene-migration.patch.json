@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "id": "managed-scene-migration",
+  "phase": "managed-scene-migration",
+  "summary": "Automatically repair only the module-managed Ghost Ship scenes that are still using the nearly-black legacy preset or have lost their bundled background, while preserving user-customized scenes.",
+  "operations": [
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "    module.api = {\n      ensureGhostShipScene,\n      rebuildGhostShipScene,\n      getGhostShipSceneData\n    };",
+      "after": "    module.api = {\n      ensureGhostShipScene,\n      rebuildGhostShipScene,\n      repairGhostShipVisibility,\n      getGhostShipSceneData\n    };",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "  if (!game.settings.get(MODULE_ID, \"autoCreateGhostShip\")) return;\n\n  try {\n    await ensureGhostShipScene();\n  } catch (error) {\n    console.error(`${MODULE_ID} | Failed to create bundled scene`, error);\n    ui.notifications?.error(\"Orphaned Sun Scenes: could not create the Signatory Ghost Ship scene. See console for details.\");\n  }",
+      "after": "  try {\n    await repairGhostShipVisibility();\n  } catch (error) {\n    console.error(`${MODULE_ID} | Failed to repair Ghost Ship visibility`, error);\n    ui.notifications?.warn(\"Orphaned Sun Scenes: the Ghost Ship visibility repair could not be applied automatically.\");\n  }\n\n  if (!game.settings.get(MODULE_ID, \"autoCreateGhostShip\")) return;\n\n  try {\n    await ensureGhostShipScene();\n  } catch (error) {\n    console.error(`${MODULE_ID} | Failed to create bundled scene`, error);\n    ui.notifications?.error(\"Orphaned Sun Scenes: could not create the Signatory Ghost Ship scene. See console for details.\");\n  }",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "export async function ensureGhostShipScene() {\n  const existing = game.scenes.find(scene => scene.getFlag(MODULE_ID, \"sceneKey\") === GHOST_SHIP_KEY);\n  if (existing) {\n    const sourceVersion = existing.getFlag(MODULE_ID, \"sourceVersion\");\n    const hasNoWalls = (existing.walls?.size ?? 0) === 0;\n    if (sourceVersion !== \"0.1.0\" || !hasNoWalls) return existing;\n\n    await existing.delete();\n    ui.notifications?.warn(\"Orphaned Sun Scenes: repairing the legacy Ghost Ship scene created without valid walls.\");\n  }\n\n  const scene = await Scene.create(getGhostShipSceneData());\n  await game.settings.set(MODULE_ID, \"ghostShipSeedVersion\", GHOST_SHIP_TEMPLATE_VERSION);\n  ui.notifications?.info(\"Orphaned Sun Scenes: Signatory Ghost Ship created with walls and dynamic lighting.\");\n  return scene;\n}\n",
+      "after": "export async function repairGhostShipVisibility(scene = null) {\n  if (!game.user?.isGM) throw new Error(\"Only a GM can repair bundled scenes.\");\n  const target = scene ?? game.scenes.find(candidate => candidate.getFlag(MODULE_ID, \"sceneKey\") === GHOST_SHIP_KEY) ?? null;\n  if (!target) return null;\n\n  const backgroundSrc = String(target.background?.src ?? \"\");\n  const backgroundMissing = !backgroundSrc;\n  const usesBundledBackground = backgroundMissing || backgroundSrc === MAP_PATH;\n  const darkness = Number(target.environment?.darknessLevel ?? 0);\n  const legacyBlackPreset = usesBundledBackground && darkness >= 0.84;\n  if (!backgroundMissing && !legacyBlackPreset) return target;\n\n  const update = {\n    [`flags.${MODULE_ID}.sourceVersion`]: GHOST_SHIP_TEMPLATE_VERSION\n  };\n  if (backgroundMissing) update[\"background.src\"] = MAP_PATH;\n  if (legacyBlackPreset) {\n    update[\"environment.darknessLevel\"] = 0.58;\n    update[\"environment.darknessLevelLock\"] = false;\n  }\n\n  await target.update(update);\n  ui.notifications?.info(\"Orphaned Sun Scenes: repaired Ghost Ship visibility. The map should now be readable while retaining dynamic horror lighting.\");\n  return target;\n}\n\nexport async function ensureGhostShipScene() {\n  const existing = game.scenes.find(scene => scene.getFlag(MODULE_ID, \"sceneKey\") === GHOST_SHIP_KEY);\n  if (existing) {\n    const sourceVersion = existing.getFlag(MODULE_ID, \"sourceVersion\");\n    const hasNoWalls = (existing.walls?.size ?? 0) === 0;\n    if (sourceVersion === \"0.1.0\" && hasNoWalls) {\n      await existing.delete();\n      ui.notifications?.warn(\"Orphaned Sun Scenes: repairing the legacy Ghost Ship scene created without valid walls.\");\n    } else {\n      return repairGhostShipVisibility(existing);\n    }\n  }\n\n  const scene = await Scene.create(getGhostShipSceneData());\n  await game.settings.set(MODULE_ID, \"ghostShipSeedVersion\", GHOST_SHIP_TEMPLATE_VERSION);\n  ui.notifications?.info(\"Orphaned Sun Scenes: Signatory Ghost Ship created with walls and dynamic lighting.\");\n  return scene;\n}\n",
+      "expectedOccurrences": 1
+    }
+  ],
+  "checks": [
+    {
+      "name": "Ghost Ship script syntax",
+      "run": "node --check scripts/orphaned-sun-scenes.mjs"
+    },
+    {
+      "name": "Legacy black preset is narrowly detected",
+      "run": "grep -q 'darkness >= 0.84' scripts/orphaned-sun-scenes.mjs && grep -q 'backgroundSrc === MAP_PATH' scripts/orphaned-sun-scenes.mjs"
+    },
+    {
+      "name": "Automatic repair is exposed and invoked",
+      "run": "test \"$(grep -c 'repairGhostShipVisibility' scripts/orphaned-sun-scenes.mjs)\" -ge 4"
+    }
+  ]
+}

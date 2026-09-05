@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "project": "ghost-ship-visibility-fix",
+  "title": "Restore readable Ghost Ship canvas while preserving horror lighting",
+  "status": "ready",
+  "phases": [
+    {
+      "order": 1,
+      "id": "readable-lighting-template",
+      "title": "Make the bundled Ghost Ship readable by default without removing sparse dynamic lighting",
+      "patch": "patches/001-readable-lighting-template.patch.json"
+    },
+    {
+      "order": 2,
+      "id": "managed-scene-migration",
+      "title": "Repair already-created managed Ghost Ship scenes that inherited the nearly-black lighting preset",
+      "patch": "patches/002-managed-scene-migration.patch.json"
+    },
+    {
+      "order": 3,
+      "id": "release-0-3-1",
+      "title": "Publish the Ghost Ship visibility repair as module 0.3.1",
+      "patch": "patches/003-release-0-3-1.patch.json"
+    }
+  ],
+  "finalChecks": [
+    {
+      "name": "Module JavaScript syntax",
+      "run": "find scripts -name '*.mjs' -print0 | xargs -0 -n1 node --check"
+    },
+    {
+      "name": "Ghost Ship readable preset",
+      "run": "node -e \"const s=require('fs').readFileSync('scripts/orphaned-sun-scenes.mjs','utf8'); if(!s.includes('darknessLevel: 0.58')) throw new Error('readable darkness preset missing'); if(!s.includes('darknessLevelLock: false')) throw new Error('darkness lock still enabled');\""
+    },
+    {
+      "name": "Managed migration exists",
+      "run": "grep -q 'repairGhostShipVisibility' scripts/orphaned-sun-scenes.mjs && grep -q '0.84' scripts/orphaned-sun-scenes.mjs"
+    },
+    {
+      "name": "Manifest version",
+      "run": "node -e \"const m=JSON.parse(require('fs').readFileSync('module.json','utf8')); if(m.version!=='0.3.1') throw new Error('expected module 0.3.1');\""
+    }
+  ]
+}
