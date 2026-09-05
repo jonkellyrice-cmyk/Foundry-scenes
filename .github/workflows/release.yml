@@ -36,6 +36,7 @@ jobs:
           test -f scripts/scene-library.mjs
           test -f styles/scene-library.css
           test -f templates/scene-library.hbs
+          command -v ffmpeg >/dev/null
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
@@ -47,6 +48,16 @@ jobs:
           mkdir -p dist/package
           cp module.json README.md dist/package/
           cp -R assets scripts styles templates dist/package/
+
+          # The source WebP is valid to Pillow/ImageMagick but Chromium/PIXI has
+          # rejected this specific encode with InvalidStateError. Transcode the
+          # release copy to a conventional JPEG so Foundry and Forge can decode it.
+          ffmpeg -hide_banner -loglevel error -y \
+            -i dist/package/assets/maps/signatory-ghost-ship.webp \
+            -q:v 2 \
+            dist/package/assets/maps/signatory-ghost-ship.jpg
+          test -s dist/package/assets/maps/signatory-ghost-ship.jpg
+
           (
             cd dist/package
             zip -r ../orphaned-sun-scenes.zip module.json README.md assets scripts styles templates \
@@ -65,6 +76,10 @@ jobs:
           test "$(jq -r '.id' dist/verify/module.json)" = "orphaned-sun-scenes"
           test "$(jq -r '.version' dist/verify/module.json)" = "${{ steps.manifest.outputs.version }}"
           test -s dist/verify/assets/maps/signatory-ghost-ship.webp
+          test -s dist/verify/assets/maps/signatory-ghost-ship.jpg
+          ffmpeg -hide_banner -loglevel error \
+            -i dist/verify/assets/maps/signatory-ghost-ship.jpg \
+            -f null -
           test -s dist/verify/scripts/orphaned-sun-scenes.mjs
           test -s dist/verify/scripts/scene-library.mjs
 
