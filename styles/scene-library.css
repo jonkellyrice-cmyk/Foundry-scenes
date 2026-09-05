@@ -625,6 +625,69 @@
   overflow-wrap: anywhere;
 }
 
+body.os-diagnostic-pick-mode,
+body.os-diagnostic-pick-mode * {
+  cursor: crosshair !important;
+}
+
+.os-point-probe {
+  border-color: rgb(200 165 75 / 58%);
+}
+
+.os-point-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.os-point-stack-entry {
+  padding: 0.55rem;
+  border: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 6px;
+  background: rgb(0 0 0 / 22%);
+}
+
+.os-point-stack-entry.is-green {
+  border-color: rgb(112 190 124 / 58%);
+  background: rgb(70 130 75 / 12%);
+}
+
+.os-point-stack-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  align-items: flex-start;
+  margin-bottom: 0.35rem;
+}
+
+.os-point-stack-entry > code,
+.os-point-css-rule code,
+.os-point-css-rule span {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 0.72rem;
+}
+
+.os-point-style-kv {
+  margin-top: 0.45rem;
+}
+
+.os-point-css-rules {
+  margin-top: 0.45rem;
+}
+
+.os-point-css-rule {
+  margin-top: 0.35rem;
+  padding: 0.4rem;
+  border-radius: 4px;
+  background: rgb(0 0 0 / 24%);
+}
+
+.os-point-css-rule strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 720px) {
   .os-diagnostics-grid,
   .os-diagnostic-suspect-columns {

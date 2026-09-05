@@ -138,6 +138,9 @@
       <button type="button" data-action="diagnosticsRefresh">
         <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i> Refresh telemetry
       </button>
+      <button type="button" data-action="diagnosticsPickPoint">
+        <i class="fa-solid fa-crosshairs" aria-hidden="true"></i> Pick artifact point
+      </button>
       <button type="button" data-action="diagnosticsCopy">
         <i class="fa-solid fa-clipboard" aria-hidden="true"></i> Copy diagnostic JSON
       </button>
@@ -236,6 +239,53 @@
           </div>
         </div>
       </section>
+
+      {{#if diagnostics.pointProbe}}
+        <section class="os-diagnostic-card os-point-probe">
+          <div class="os-diagnostic-heading">
+            <div>
+              <p class="os-library-kicker">DIRECT SCREEN-POINT TELEMETRY</p>
+              <h3><i class="fa-solid fa-crosshairs"></i> Picked artifact point</h3>
+            </div>
+            <span class="os-diagnostic-badge">x{{diagnostics.pointProbe.x}} · y{{diagnostics.pointProbe.y}}</span>
+          </div>
+          <p>{{diagnostics.pointProbe.status}}. The stack is ordered from the topmost browser element downward. Matching visual CSS rules are included where the browser exposes their stylesheet.</p>
+
+          <div class="os-point-stack">
+            {{#each diagnostics.pointProbe.stack}}
+              <article class="os-point-stack-entry {{#if green}}is-green{{/if}}">
+                <div class="os-point-stack-title">
+                  <strong>#{{rank}} &lt;{{tag}}&gt; {{#if id}}#{{id}}{{/if}} {{classes}}</strong>
+                  {{#if green}}<span class="os-diagnostic-badge">green signal</span>{{/if}}
+                </div>
+                <code>x{{x}} y{{y}} · {{width}}×{{height}} · {{position}} · z {{zIndex}}</code>
+                <dl class="os-diagnostic-kv os-point-style-kv">
+                  <div><dt>Background</dt><dd>{{background}}</dd></div>
+                  <div><dt>BG image</dt><dd>{{backgroundImage}}</dd></div>
+                  <div><dt>Box shadow</dt><dd>{{boxShadow}}</dd></div>
+                  <div><dt>Opacity / filter</dt><dd>{{opacity}} / {{filter}}</dd></div>
+                  <div><dt>Blend / isolation</dt><dd>{{mixBlendMode}} / {{isolation}}</dd></div>
+                  <div><dt>--system-color</dt><dd>{{systemColor}}</dd></div>
+                  <div><dt>::before</dt><dd>{{before.background}} · {{before.backgroundImage}}</dd></div>
+                  <div><dt>::after</dt><dd>{{after.background}} · {{after.backgroundImage}}</dd></div>
+                </dl>
+                {{#if visualRules.length}}
+                  <details class="os-point-css-rules">
+                    <summary>Matching visual CSS rules ({{visualRules.length}})</summary>
+                    {{#each visualRules}}
+                      <div class="os-point-css-rule">
+                        <strong>{{selector}}</strong>
+                        <span>{{source}}</span>
+                        <code>{{css}}</code>
+                      </div>
+                    {{/each}}
+                  </details>
+                {{/if}}
+              </article>
+            {{/each}}
+          </div>
+        </section>
+      {{/if}}
 
       {{#if diagnostics.hasWarnings}}
         <section class="os-diagnostic-card os-diagnostic-warnings">

@@ -14,7 +14,7 @@ import {
   clearComicDraft,
   createComicBookScene
 } from "./comic-book-maker.mjs";
-import { collectSceneDiagnostics, diagnosticsClipboardText } from "./scene-diagnostics.mjs";
+import { collectSceneDiagnostics, collectDomPointProbe, diagnosticsClipboardText } from "./scene-diagnostics.mjs";
 
 const MODULE_ID = "orphaned-sun-scenes";
 const APP_ID = `${MODULE_ID}-scene-library`;
@@ -105,6 +105,8 @@ export class OrphanedSunSceneLibrary extends HandlebarsApplicationMixin(Applicat
     super(options);
     this.activeTab = "scenes";
     this.comicDraft = loadComicDraft();
+    this.diagnosticPointProbe = null;
+    this._diagnosticPickCleanup = null;
   }
 
   static DEFAULT_OPTIONS = {
@@ -134,6 +136,7 @@ export class OrphanedSunSceneLibrary extends HandlebarsApplicationMixin(Applicat
       showScenes: OrphanedSunSceneLibrary.showScenes,
       showDiagnostics: OrphanedSunSceneLibrary.showDiagnostics,
       diagnosticsRefresh: OrphanedSunSceneLibrary.diagnosticsRefresh,
+      diagnosticsPickPoint: OrphanedSunSceneLibrary.diagnosticsPickPoint,
       diagnosticsCopy: OrphanedSunSceneLibrary.diagnosticsCopy,
       showComic: OrphanedSunSceneLibrary.showComic,
       comicChooseFiles: OrphanedSunSceneLibrary.comicChooseFiles,
@@ -156,7 +159,7 @@ export class OrphanedSunSceneLibrary extends HandlebarsApplicationMixin(Applicat
     const context = await super._prepareContext(options);
     const scenes = Array.from(SCENE_LIBRARY.values()).map(sceneDescriptor);
     const diagnostics = this.activeTab === "diagnostics"
-      ? await collectSceneDiagnostics(findManagedScene(GHOST_SHIP_KEY))
+      ? await collectSceneDiagnostics(findManagedScene(GHOST_SHIP_KEY), { pointProbe: this.diagnosticPointProbe })
       : null;
     return {
       ...context,
@@ -239,9 +242,51 @@ export class OrphanedSunSceneLibrary extends HandlebarsApplicationMixin(Applicat
     await this.render({ force: true });
   }
 
+  static async diagnosticsPickPoint() {
+    this.activeTab = "diagnostics";
+    this._diagnosticPickCleanup?.();
+
+    const body = document.body;
+    body?.classList.add("os-diagnostic-pick-mode");
+    ui.notifications?.info("Artifact picker armed. Click directly on the green strip; press Escape to cancel.");
+
+    let active = true;
+    const cleanup = () => {
+      if (!active) return;
+      active = false;
+      body?.classList.remove("os-diagnostic-pick-mode");
+      document.removeEventListener("pointerdown", handlePoint, true);
+      document.removeEventListener("keydown", handleKey, true);
+      this._diagnosticPickCleanup = null;
+    };
+
+    const handlePoint = async event => {
+      if (this.element?.contains(event.target)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      cleanup();
+      this.diagnosticPointProbe = collectDomPointProbe(event.clientX, event.clientY);
+      ui.notifications?.info(`Captured artifact point at x${this.diagnosticPointProbe.x}, y${this.diagnosticPointProbe.y}.`);
+      await this.render({ force: true });
+    };
+
+    const handleKey = event => {
+      if (event.key !== "Escape") return;
+      cleanup();
+      ui.notifications?.info("Artifact picker cancelled.");
+    };
+
+    this._diagnosticPickCleanup = cleanup;
+    setTimeout(() => {
+      if (!active) return;
+      document.addEventListener("pointerdown", handlePoint, true);
+      document.addEventListener("keydown", handleKey, true);
+    }, 0);
+  }
+
   static async diagnosticsCopy() {
     try {
-      const diagnostics = await collectSceneDiagnostics(findManagedScene(GHOST_SHIP_KEY));
+      const diagnostics = await collectSceneDiagnostics(findManagedScene(GHOST_SHIP_KEY), { pointProbe: this.diagnosticPointProbe });
       await navigator.clipboard.writeText(diagnosticsClipboardText(diagnostics));
       ui.notifications?.info("Scene diagnostics copied to clipboard.");
     } catch (error) {
