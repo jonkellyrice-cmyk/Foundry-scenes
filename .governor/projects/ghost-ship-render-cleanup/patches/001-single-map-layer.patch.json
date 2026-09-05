@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "id": "single-map-layer",
+  "phase": "single-map-layer",
+  "summary": "Stop rendering the Ghost Ship artwork twice. Keep the verified JPEG only as the Scene background and remove every legacy module-managed full-map Tile that caused the duplicate image and green canvas artifact.",
+  "operations": [
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "function makeGhostShipMapTile(src) {\n  return {\n    texture: { src, fit: \"fill\" },\n    x: 0,\n    y: 0,\n    width: 1672,\n    height: 941,\n    elevation: -1000,\n    sort: -1000,\n    rotation: 0,\n    alpha: 1,\n    hidden: false,\n    locked: true,\n    restrictions: { light: false, weather: false },\n    flags: {\n      [MODULE_ID]: {\n        ghostShipMapFloor: true,\n        sourceVersion: GHOST_SHIP_TEMPLATE_VERSION\n      }\n    }\n  };\n}\n",
+      "after": "function getGhostShipManagedFloorTiles(scene) {\n  return Array.from(scene?.tiles ?? []).filter(tile => {\n    const flagged = Boolean(tile.getFlag?.(MODULE_ID, \"ghostShipMapFloor\"));\n    const src = String(tile.texture?.src ?? \"\");\n    return flagged || src.includes(\"signatory-ghost-ship\");\n  });\n}\n",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "    tiles: [makeGhostShipMapTile(MAP_PATH)],\n",
+      "after": "",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "  const floorTiles = Array.from(target.tiles ?? []);\n  const managedFloorTile = floorTiles.find(tile => tile.getFlag?.(MODULE_ID, \"ghostShipMapFloor\")) ?? null;\n  const hasManagedFloorTile = Boolean(managedFloorTile);\n  const managedFloorSrc = String(managedFloorTile?.texture?.src ?? \"\");\n  const hasLegacyWebpReference = backgroundSrc.includes(\"signatory-ghost-ship.webp\")\n    || managedFloorSrc.includes(\"signatory-ghost-ship.webp\");\n  const needsVersionedMapRepair = sourceVersion !== GHOST_SHIP_TEMPLATE_VERSION;\n  const needsMapDeliveryRepair = usesBundledBackground || !hasManagedFloorTile || needsVersionedMapRepair || hasLegacyWebpReference;\n",
+      "after": "  const managedFloorTiles = getGhostShipManagedFloorTiles(target);\n  const hasLegacyWebpReference = backgroundSrc.includes(\"signatory-ghost-ship.webp\")\n    || managedFloorTiles.some(tile => String(tile.texture?.src ?? \"\").includes(\"signatory-ghost-ship.webp\"));\n  const needsVersionedMapRepair = sourceVersion !== GHOST_SHIP_TEMPLATE_VERSION;\n  const needsMapDeliveryRepair = usesBundledBackground || needsVersionedMapRepair || hasLegacyWebpReference;\n",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "  await target.update(update);\n  if (managedFloorTile && mapSrc) {\n    await target.updateEmbeddedDocuments(\"Tile\", [{\n      _id: managedFloorTile.id,\n      \"texture.src\": mapSrc,\n      [`flags.${MODULE_ID}.sourceVersion`]: GHOST_SHIP_TEMPLATE_VERSION\n    }]);\n  } else if (mapSrc) {\n    await target.createEmbeddedDocuments(\"Tile\", [makeGhostShipMapTile(mapSrc)]);\n  }\n\n  ui.notifications?.info(\"Orphaned Sun Scenes: repaired Ghost Ship map delivery without changing walls, doors, lights, or tokens.\");",
+      "after": "  await target.update(update);\n  if (managedFloorTiles.length) {\n    await target.deleteEmbeddedDocuments(\"Tile\", managedFloorTiles.map(tile => tile.id));\n  }\n\n  ui.notifications?.info(\"Orphaned Sun Scenes: repaired Ghost Ship map delivery and removed the obsolete duplicate floor image.\");",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "  sceneData.background.src = mapSrc;\n  sceneData.tiles = [makeGhostShipMapTile(mapSrc)];\n  const scene = await Scene.create(sceneData);",
+      "after": "  sceneData.background.src = mapSrc;\n  const scene = await Scene.create(sceneData);",
+      "expectedOccurrences": 1
+    }
+  ],
+  "checks": [
+    {
+      "name": "Ghost Ship script syntax",
+      "run": "node --check scripts/orphaned-sun-scenes.mjs"
+    },
+    {
+      "name": "Single image layer only",
+      "run": "! grep -q 'makeGhostShipMapTile' scripts/orphaned-sun-scenes.mjs && ! grep -q 'tiles: \[' scripts/orphaned-sun-scenes.mjs"
+    },
+    {
+      "name": "Legacy floor cleanup retained",
+      "run": "grep -q 'getGhostShipManagedFloorTiles' scripts/orphaned-sun-scenes.mjs && grep -q 'deleteEmbeddedDocuments(\"Tile\"' scripts/orphaned-sun-scenes.mjs"
+    }
+  ]
+}
