@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "project": "ghost-ship-map-delivery-fix",
   "title": "Make the Ghost Ship artwork reliably visible on Forge",
-  "status": "draft",
+  "status": "ready",
   "phases": [
     {
       "order": 1,
