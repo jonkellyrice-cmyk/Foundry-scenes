@@ -251,27 +251,12 @@ function buildGhostShipLights() {
   ];
 }
 
-function makeGhostShipMapTile(src) {
-  return {
-    texture: { src, fit: "fill" },
-    x: 0,
-    y: 0,
-    width: 1672,
-    height: 941,
-    elevation: -1000,
-    sort: -1000,
-    rotation: 0,
-    alpha: 1,
-    hidden: false,
-    locked: true,
-    restrictions: { light: false, weather: false },
-    flags: {
-      [MODULE_ID]: {
-        ghostShipMapFloor: true,
-        sourceVersion: GHOST_SHIP_TEMPLATE_VERSION
-      }
-    }
-  };
+function getGhostShipManagedFloorTiles(scene) {
+  return Array.from(scene?.tiles ?? []).filter(tile => {
+    const flagged = Boolean(tile.getFlag?.(MODULE_ID, "ghostShipMapFloor"));
+    const src = String(tile.texture?.src ?? "");
+    return flagged || src.includes("signatory-ghost-ship");
+  });
 }
 
 async function decodeGhostShipBlob(blob, label) {
@@ -379,7 +364,6 @@ export function getGhostShipSceneData() {
     initial: { x: 836, y: 470, scale: 0.72 },
     walls: buildGhostShipWalls(),
     lights: buildGhostShipLights(),
-    tiles: [makeGhostShipMapTile(MAP_PATH)],
     flags: {
       [MODULE_ID]: {
         sceneKey: GHOST_SHIP_KEY,
@@ -400,14 +384,11 @@ export async function repairGhostShipVisibility(scene = null) {
   const sourceVersion = String(target.getFlag(MODULE_ID, "sourceVersion") ?? "");
   const darkness = Number(target.environment?.darknessLevel ?? 0);
   const legacyBlackPreset = darkness >= 0.84;
-  const floorTiles = Array.from(target.tiles ?? []);
-  const managedFloorTile = floorTiles.find(tile => tile.getFlag?.(MODULE_ID, "ghostShipMapFloor")) ?? null;
-  const hasManagedFloorTile = Boolean(managedFloorTile);
-  const managedFloorSrc = String(managedFloorTile?.texture?.src ?? "");
+  const managedFloorTiles = getGhostShipManagedFloorTiles(target);
   const hasLegacyWebpReference = backgroundSrc.includes("signatory-ghost-ship.webp")
-    || managedFloorSrc.includes("signatory-ghost-ship.webp");
+    || managedFloorTiles.some(tile => String(tile.texture?.src ?? "").includes("signatory-ghost-ship.webp"));
   const needsVersionedMapRepair = sourceVersion !== GHOST_SHIP_TEMPLATE_VERSION;
-  const needsMapDeliveryRepair = usesBundledBackground || !hasManagedFloorTile || needsVersionedMapRepair || hasLegacyWebpReference;
+  const needsMapDeliveryRepair = usesBundledBackground || needsVersionedMapRepair || hasLegacyWebpReference;
   if (!needsMapDeliveryRepair && !legacyBlackPreset) return target;
 
   let mapSrc = backgroundSrc;
@@ -423,17 +404,11 @@ export async function repairGhostShipVisibility(scene = null) {
   }
 
   await target.update(update);
-  if (managedFloorTile && mapSrc) {
-    await target.updateEmbeddedDocuments("Tile", [{
-      _id: managedFloorTile.id,
-      "texture.src": mapSrc,
-      [`flags.${MODULE_ID}.sourceVersion`]: GHOST_SHIP_TEMPLATE_VERSION
-    }]);
-  } else if (mapSrc) {
-    await target.createEmbeddedDocuments("Tile", [makeGhostShipMapTile(mapSrc)]);
+  if (managedFloorTiles.length) {
+    await target.deleteEmbeddedDocuments("Tile", managedFloorTiles.map(tile => tile.id));
   }
 
-  ui.notifications?.info("Orphaned Sun Scenes: repaired Ghost Ship map delivery without changing walls, doors, lights, or tokens.");
+  ui.notifications?.info("Orphaned Sun Scenes: repaired Ghost Ship map delivery and removed the obsolete duplicate floor image.");
   return target;
 }
 
@@ -453,7 +428,6 @@ export async function ensureGhostShipScene() {
   const mapSrc = await provisionGhostShipMapAsset();
   const sceneData = getGhostShipSceneData();
   sceneData.background.src = mapSrc;
-  sceneData.tiles = [makeGhostShipMapTile(mapSrc)];
   const scene = await Scene.create(sceneData);
   await game.settings.set(MODULE_ID, "ghostShipSeedVersion", GHOST_SHIP_TEMPLATE_VERSION);
   ui.notifications?.info("Orphaned Sun Scenes: Signatory Ghost Ship created with walls and dynamic lighting.");
