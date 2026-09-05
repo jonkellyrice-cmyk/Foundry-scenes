@@ -14,6 +14,7 @@ import {
   clearComicDraft,
   createComicBookScene
 } from "./comic-book-maker.mjs";
+import { collectSceneDiagnostics, diagnosticsClipboardText } from "./scene-diagnostics.mjs";
 
 const MODULE_ID = "orphaned-sun-scenes";
 const APP_ID = `${MODULE_ID}-scene-library`;
@@ -131,6 +132,9 @@ export class OrphanedSunSceneLibrary extends HandlebarsApplicationMixin(Applicat
       toggleAutoCreate: OrphanedSunSceneLibrary.toggleAutoCreate,
       refresh: OrphanedSunSceneLibrary.refresh,
       showScenes: OrphanedSunSceneLibrary.showScenes,
+      showDiagnostics: OrphanedSunSceneLibrary.showDiagnostics,
+      diagnosticsRefresh: OrphanedSunSceneLibrary.diagnosticsRefresh,
+      diagnosticsCopy: OrphanedSunSceneLibrary.diagnosticsCopy,
       showComic: OrphanedSunSceneLibrary.showComic,
       comicChooseFiles: OrphanedSunSceneLibrary.comicChooseFiles,
       comicAddPath: OrphanedSunSceneLibrary.comicAddPath,
@@ -151,6 +155,9 @@ export class OrphanedSunSceneLibrary extends HandlebarsApplicationMixin(Applicat
   async _prepareContext(options) {
     const context = await super._prepareContext(options);
     const scenes = Array.from(SCENE_LIBRARY.values()).map(sceneDescriptor);
+    const diagnostics = this.activeTab === "diagnostics"
+      ? await collectSceneDiagnostics(findManagedScene(GHOST_SHIP_KEY))
+      : null;
     return {
       ...context,
       moduleVersion: moduleVersion(),
@@ -159,7 +166,9 @@ export class OrphanedSunSceneLibrary extends HandlebarsApplicationMixin(Applicat
       installedCount: scenes.filter(scene => scene.installed).length,
       scenes,
       tabScenes: this.activeTab === "scenes",
+      tabDiagnostics: this.activeTab === "diagnostics",
       tabComic: this.activeTab === "comic",
+      diagnostics,
       comic: comicContext(this.comicDraft)
     };
   }
@@ -218,6 +227,27 @@ export class OrphanedSunSceneLibrary extends HandlebarsApplicationMixin(Applicat
   static async showScenes() {
     this.activeTab = "scenes";
     await this.render({ force: true });
+  }
+
+  static async showDiagnostics() {
+    this.activeTab = "diagnostics";
+    await this.render({ force: true });
+  }
+
+  static async diagnosticsRefresh() {
+    this.activeTab = "diagnostics";
+    await this.render({ force: true });
+  }
+
+  static async diagnosticsCopy() {
+    try {
+      const diagnostics = await collectSceneDiagnostics(findManagedScene(GHOST_SHIP_KEY));
+      await navigator.clipboard.writeText(diagnosticsClipboardText(diagnostics));
+      ui.notifications?.info("Scene diagnostics copied to clipboard.");
+    } catch (error) {
+      console.error(`${MODULE_ID} | Failed to copy diagnostics`, error);
+      ui.notifications?.warn(`Could not copy diagnostics: ${error?.message ?? error}`);
+    }
   }
 
   static async showComic() {
