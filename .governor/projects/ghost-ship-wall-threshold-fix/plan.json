@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "project": "ghost-ship-wall-threshold-fix",
   "title": "Repair Signatory Ghost Ship scene import on Foundry V13",
-  "status": "draft",
+  "status": "ready",
   "phases": [
     {
       "order": 1,
