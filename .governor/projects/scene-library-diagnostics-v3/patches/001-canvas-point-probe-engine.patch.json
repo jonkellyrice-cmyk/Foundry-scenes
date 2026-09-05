@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "id": "canvas-point-probe-engine",
+  "phase": "canvas-point-probe-engine",
+  "summary": "Add a read-only PIXI/canvas render-tree point probe and include its structured output in Scene diagnostics.",
+  "operations": [
+    {
+      "op": "replace",
+      "path": "scripts/scene-diagnostics.mjs",
+      "before": "\nfunction collectGreenDomCandidates() {",
+      "after": "\nfunction colorValueTelemetry(value) {\n  if (typeof value === \"number\" && Number.isFinite(value)) {\n    const rgb = Math.max(0, Math.min(0xffffff, Math.trunc(value)));\n    const r = (rgb >> 16) & 0xff;\n    const g = (rgb >> 8) & 0xff;\n    const b = rgb & 0xff;\n    return {\n      value,\n      hex: `#${rgb.toString(16).padStart(6, \"0\")}`,\n      green: g >= 115 && g >= r * 1.35 && g >= b * 1.25\n    };\n  }\n  if (typeof value === \"string\") {\n    return { value, hex: value, green: isStrongGreen(value) };\n  }\n  return null;\n}\n\nfunction safeDisplayBounds(displayObject) {\n  try {\n    const bounds = displayObject?.getBounds?.();\n    if (!bounds) return null;\n    const x = finite(bounds.x ?? bounds.minX, NaN);\n    const y = finite(bounds.y ?? bounds.minY, NaN);\n    const width = finite(bounds.width ?? ((bounds.maxX ?? NaN) - (bounds.minX ?? NaN)), NaN);\n    const height = finite(bounds.height ?? ((bounds.maxY ?? NaN) - (bounds.minY ?? NaN)), NaN);\n    if (![x, y, width, height].every(Number.isFinite)) return null;\n    return { x: round(x), y: round(y), width: round(width), height: round(height) };\n  } catch {\n    return null;\n  }\n}\n\nfunction boundsContainPoint(bounds, point) {\n  if (!bounds || !point) return false;\n  return point.x >= bounds.x\n    && point.y >= bounds.y\n    && point.x <= bounds.x + bounds.width\n    && point.y <= bounds.y + bounds.height;\n}\n\nfunction displayIdentity(displayObject) {\n  const doc = displayObject?.document;\n  return {\n    className: displayObject?.constructor?.name ?? \"Unknown\",\n    name: String(displayObject?.name ?? displayObject?.label ?? \"\"),\n    document: doc ? {\n      documentName: doc.documentName ?? doc.constructor?.name ?? \"\",\n      id: doc.id ?? \"\",\n      name: doc.name ?? \"\"\n    } : null\n  };\n}\n\nfunction displayParentChain(displayObject) {\n  const chain = [];\n  let cursor = displayObject?.parent ?? null;\n  for (let depth = 0; cursor && depth < 10; depth += 1) {\n    chain.push({\n      className: cursor.constructor?.name ?? \"Unknown\",\n      name: String(cursor.name ?? cursor.label ?? \"\")\n    });\n    cursor = cursor.parent ?? null;\n  }\n  return chain;\n}\n\nfunction displayVisualProperties(displayObject) {\n  const interesting = new Set([\n    \"tint\", \"color\", \"fillColor\", \"backgroundColor\", \"_tintRGB\",\n    \"alpha\", \"worldAlpha\", \"blendMode\", \"zIndex\", \"sort\", \"elevation\", \"eventMode\"\n  ]);\n  const discovered = Object.keys(displayObject ?? {})\n    .filter(key => /(tint|color|fill|alpha|blend|zindex|sort|elevation)/i.test(key))\n    .slice(0, 24);\n  const properties = {};\n  const greenSignals = [];\n\n  for (const key of [...interesting, ...discovered]) {\n    if (Object.prototype.hasOwnProperty.call(properties, key)) continue;\n    let value;\n    try {\n      value = displayObject?.[key];\n    } catch {\n      continue;\n    }\n    if ([\"string\", \"number\", \"boolean\"].includes(typeof value) || value == null) {\n      properties[key] = value;\n      if (/(tint|color|fill)/i.test(key)) {\n        const color = colorValueTelemetry(value);\n        if (color?.green) greenSignals.push({ path: key, ...color });\n      }\n      continue;\n    }\n    if (typeof value !== \"object\") continue;\n    const nested = {};\n    for (const nestedKey of Object.keys(value).filter(item => /(tint|color|fill|alpha)/i.test(item)).slice(0, 8)) {\n      let nestedValue;\n      try {\n        nestedValue = value[nestedKey];\n      } catch {\n        continue;\n      }\n      if (![\"string\", \"number\", \"boolean\"].includes(typeof nestedValue) && nestedValue != null) continue;\n      nested[nestedKey] = nestedValue;\n      if (/(tint|color|fill)/i.test(nestedKey)) {\n        const color = colorValueTelemetry(nestedValue);\n        if (color?.green) greenSignals.push({ path: `${key}.${nestedKey}`, ...color });\n      }\n    }\n    if (Object.keys(nested).length) properties[key] = nested;\n  }\n\n  return { properties, greenSignals };\n}\n\nfunction displayObjectTelemetry(displayObject, depth, rendererPoint, scenePoint) {\n  const bounds = safeDisplayBounds(displayObject);\n  const visual = displayVisualProperties(displayObject);\n  let containsPoint = false;\n  if (typeof displayObject?.containsPoint === \"function\") {\n    try {\n      containsPoint = Boolean(displayObject.containsPoint(rendererPoint));\n    } catch {\n      containsPoint = false;\n    }\n  }\n  return {\n    ...displayIdentity(displayObject),\n    depth,\n    visible: displayObject?.visible !== false,\n    renderable: displayObject?.renderable !== false,\n    alpha: round(displayObject?.alpha ?? 1, 3),\n    worldAlpha: round(displayObject?.worldAlpha ?? displayObject?.alpha ?? 1, 3),\n    zIndex: finite(displayObject?.zIndex),\n    sort: finite(displayObject?.sort ?? displayObject?.sortOrder),\n    childCount: Array.isArray(displayObject?.children) ? displayObject.children.length : 0,\n    bounds,\n    hitRendererBounds: boundsContainPoint(bounds, rendererPoint),\n    hitSceneBounds: boundsContainPoint(bounds, scenePoint),\n    containsPoint,\n    mask: displayObject?.mask ? displayIdentity(displayObject.mask) : null,\n    filters: list(displayObject?.filters).map(filter => filter?.constructor?.name ?? \"Unknown\"),\n    parentChain: displayParentChain(displayObject),\n    visualProperties: visual.properties,\n    greenSignals: visual.greenSignals\n  };\n}\n\nfunction canvasCoordinateTelemetry(x, y) {\n  const board = document.getElementById(\"board\");\n  const rect = board?.getBoundingClientRect?.();\n  const renderer = globalThis.canvas?.app?.renderer;\n  const stage = globalThis.canvas?.stage;\n  const client = { x: finite(x), y: finite(y) };\n  const rendererWidth = finite(renderer?.screen?.width ?? rect?.width, rect?.width ?? 0);\n  const rendererHeight = finite(renderer?.screen?.height ?? rect?.height, rect?.height ?? 0);\n  const rendererPoint = rect && rect.width > 0 && rect.height > 0\n    ? {\n        x: (client.x - rect.left) * (rendererWidth / rect.width),\n        y: (client.y - rect.top) * (rendererHeight / rect.height)\n      }\n    : { ...client };\n\n  let scenePoint = null;\n  try {\n    const inverse = stage?.worldTransform?.applyInverse?.(rendererPoint);\n    if (Number.isFinite(inverse?.x) && Number.isFinite(inverse?.y)) {\n      scenePoint = { x: inverse.x, y: inverse.y };\n    }\n  } catch {\n    scenePoint = null;\n  }\n  if (!scenePoint) {\n    const scaleX = finite(stage?.scale?.x, 1) || 1;\n    const scaleY = finite(stage?.scale?.y, 1) || 1;\n    const positionX = finite(stage?.position?.x);\n    const positionY = finite(stage?.position?.y);\n    const pivotX = finite(stage?.pivot?.x);\n    const pivotY = finite(stage?.pivot?.y);\n    scenePoint = {\n      x: ((rendererPoint.x - positionX) / scaleX) + pivotX,\n      y: ((rendererPoint.y - positionY) / scaleY) + pivotY\n    };\n  }\n\n  return {\n    client: { x: round(client.x), y: round(client.y) },\n    renderer: { x: round(rendererPoint.x), y: round(rendererPoint.y) },\n    scene: { x: round(scenePoint.x), y: round(scenePoint.y) },\n    board: rect ? {\n      x: round(rect.x),\n      y: round(rect.y),\n      width: round(rect.width),\n      height: round(rect.height)\n    } : null,\n    rendererScreen: { width: round(rendererWidth), height: round(rendererHeight) }\n  };\n}\n\nfunction topLevelCanvasGroups(stage, rendererPoint, scenePoint) {\n  return list(stage?.children).map((child, index) => {\n    const item = displayObjectTelemetry(child, 1, rendererPoint, scenePoint);\n    return {\n      order: index,\n      className: item.className,\n      name: item.name,\n      visible: item.visible,\n      renderable: item.renderable,\n      alpha: item.alpha,\n      worldAlpha: item.worldAlpha,\n      zIndex: item.zIndex,\n      childCount: item.childCount,\n      bounds: item.bounds,\n      hitRendererBounds: item.hitRendererBounds,\n      hitSceneBounds: item.hitSceneBounds,\n      greenSignals: item.greenSignals\n    };\n  });\n}\n\nexport function collectCanvasPointProbe(x, y) {\n  const stage = globalThis.canvas?.stage;\n  if (!stage) {\n    return {\n      status: \"Canvas stage unavailable\",\n      coordinates: canvasCoordinateTelemetry(x, y),\n      hits: [],\n      topLevelGroups: [],\n      traversed: 0\n    };\n  }\n\n  const coordinates = canvasCoordinateTelemetry(x, y);\n  const rendererPoint = coordinates.renderer;\n  const scenePoint = coordinates.scene;\n  const hits = [];\n  const stack = [{ node: stage, depth: 0 }];\n  let traversed = 0;\n  const maxObjects = 5000;\n\n  while (stack.length && traversed < maxObjects) {\n    const { node, depth } = stack.pop();\n    traversed += 1;\n    const telemetry = displayObjectTelemetry(node, depth, rendererPoint, scenePoint);\n    if (telemetry.visible && telemetry.renderable\n      && (telemetry.hitRendererBounds || telemetry.hitSceneBounds || telemetry.containsPoint || telemetry.greenSignals.length)) {\n      hits.push(telemetry);\n    }\n    const children = list(node?.children);\n    for (let index = children.length - 1; index >= 0; index -= 1) {\n      stack.push({ node: children[index], depth: depth + 1 });\n    }\n  }\n\n  hits.sort((a, b) => {\n    const aPoint = Number(a.containsPoint) + Number(a.hitRendererBounds) + Number(a.hitSceneBounds);\n    const bPoint = Number(b.containsPoint) + Number(b.hitRendererBounds) + Number(b.hitSceneBounds);\n    if (aPoint !== bPoint) return bPoint - aPoint;\n    if (a.greenSignals.length !== b.greenSignals.length) return b.greenSignals.length - a.greenSignals.length;\n    if (a.depth !== b.depth) return b.depth - a.depth;\n    const aArea = (a.bounds?.width ?? Infinity) * (a.bounds?.height ?? Infinity);\n    const bArea = (b.bounds?.width ?? Infinity) * (b.bounds?.height ?? Infinity);\n    return aArea - bArea;\n  });\n\n  return {\n    status: hits.length ? \"Captured\" : \"No PIXI display objects matched the point\",\n    coordinates,\n    traversed,\n    truncated: traversed >= maxObjects,\n    hitCount: hits.length,\n    greenSignalCount: hits.reduce((sum, item) => sum + item.greenSignals.length, 0),\n    hits: hits.slice(0, 80),\n    topLevelGroups: topLevelCanvasGroups(stage, rendererPoint, scenePoint)\n  };\n}\n\nexport function collectArtifactPointProbe(x, y) {\n  return {\n    capturedAt: new Date().toISOString(),\n    dom: collectDomPointProbe(x, y),\n    canvas: collectCanvasPointProbe(x, y)\n  };\n}\n\nfunction collectGreenDomCandidates() {",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/scene-diagnostics.mjs",
+      "before": "export async function collectSceneDiagnostics(scene, { pointProbe = null } = {}) {",
+      "after": "export async function collectSceneDiagnostics(scene, { pointProbe = null, canvasPointProbe = null } = {}) {",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/scene-diagnostics.mjs",
+      "before": "      pointProbe,\n      raw: { available: false, greenDomCandidates: domGreen, pointProbe }",
+      "after": "      pointProbe,\n      canvasPointProbe,\n      raw: { available: false, greenDomCandidates: domGreen, pointProbe, canvasPointProbe }",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/scene-diagnostics.mjs",
+      "before": "  const pickedPoint = pointProbe ?? null;\n  const background = await probeImage(String(scene.background?.src ?? \"\"));",
+      "after": "  const pickedPoint = pointProbe ?? null;\n  const pickedCanvasPoint = canvasPointProbe ?? null;\n  const background = await probeImage(String(scene.background?.src ?? \"\"));",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/scene-diagnostics.mjs",
+      "before": "  if (pickedPoint?.stack?.length) warnings.push(`Direct artifact-point probe captured ${pickedPoint.stack.length} DOM layer(s) at x${pickedPoint.x}, y${pickedPoint.y}; inspect the point stack and matching CSS rules.`);",
+      "after": "  if (pickedPoint?.stack?.length) warnings.push(`Direct artifact-point probe captured ${pickedPoint.stack.length} DOM layer(s) at x${pickedPoint.x}, y${pickedPoint.y}; inspect the point stack and matching CSS rules.`);\n  if (pickedCanvasPoint?.hitCount) warnings.push(`Canvas/PIXI point probe matched ${pickedCanvasPoint.hitCount} display object(s); inspect render-tree hits, parent chains, bounds, and green color signals.`);",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/scene-diagnostics.mjs",
+      "before": "    pointProbe: pickedPoint,\n    warnings",
+      "after": "    pointProbe: pickedPoint,\n    canvasPointProbe: pickedCanvasPoint,\n    warnings",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/scene-diagnostics.mjs",
+      "before": "    pointProbe: pickedPoint,\n    greenArtifactCandidates:",
+      "after": "    pointProbe: pickedPoint,\n    canvasPointProbe: pickedCanvasPoint,\n    greenArtifactCandidates:",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/scene-diagnostics.mjs",
+      "before": "    artifactAssessment: pickedPoint?.stack?.length\n      ? `A direct DOM stack was captured at x${pickedPoint.x}, y${pickedPoint.y}. Use that stack and its matching CSS rules as the primary artifact evidence.`\n      : greenSceneCandidates.length",
+      "after": "    artifactAssessment: pickedCanvasPoint?.hitCount\n      ? `A canvas/PIXI render-tree probe matched ${pickedCanvasPoint.hitCount} display object(s) at the picked point. Use those render-tree hits as the primary artifact evidence.`\n      : pickedPoint?.stack?.length\n      ? `A direct DOM stack was captured at x${pickedPoint.x}, y${pickedPoint.y}. Use that stack and its matching CSS rules as the primary artifact evidence.`\n      : greenSceneCandidates.length",
+      "expectedOccurrences": 1
+    }
+  ],
+  "checks": [
+    {
+      "name": "Diagnostics JavaScript syntax",
+      "run": "node --check scripts/scene-diagnostics.mjs"
+    },
+    {
+      "name": "Canvas point probe exports",
+      "run": "grep -q 'export function collectCanvasPointProbe' scripts/scene-diagnostics.mjs && grep -q 'export function collectArtifactPointProbe' scripts/scene-diagnostics.mjs"
+    },
+    {
+      "name": "Canvas snapshot wiring",
+      "run": "grep -q 'canvasPointProbe: pickedCanvasPoint' scripts/scene-diagnostics.mjs"
+    }
+  ]
+}
