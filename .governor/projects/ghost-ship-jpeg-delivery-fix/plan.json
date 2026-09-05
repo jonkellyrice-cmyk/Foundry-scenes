@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "project": "ghost-ship-jpeg-delivery-fix",
   "title": "Deliver the Ghost Ship map as a browser-safe JPEG",
-  "status": "draft",
+  "status": "ready",
   "phases": [
     {
       "order": 1,
