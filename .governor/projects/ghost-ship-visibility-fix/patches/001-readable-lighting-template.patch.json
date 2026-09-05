@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "id": "readable-lighting-template",
+  "phase": "readable-lighting-template",
+  "summary": "Reduce the excessive scene darkness, unlock the darkness control, strengthen surviving fixture output, and version the Ghost Ship template independently from unrelated module features.",
+  "operations": [
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "const MODULE_VERSION = \"0.2.1\";",
+      "after": "const GHOST_SHIP_TEMPLATE_VERSION = \"0.3.1\";",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "    luminosity: 0.15,",
+      "after": "    luminosity: 0.35,",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "      darknessLevel: 0.88,\n      darknessLevelLock: true,",
+      "after": "      // The artwork is already intrinsically dark. A near-total Foundry darkness\n      // overlay made the deck disappear even for the GM. Keep the horror mood\n      // while leaving enough image information to navigate and place tokens.\n      darknessLevel: 0.58,\n      darknessLevelLock: false,",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "        sourceVersion: MODULE_VERSION",
+      "after": "        sourceVersion: GHOST_SHIP_TEMPLATE_VERSION",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "  await game.settings.set(MODULE_ID, \"ghostShipSeedVersion\", MODULE_VERSION);",
+      "after": "  await game.settings.set(MODULE_ID, \"ghostShipSeedVersion\", GHOST_SHIP_TEMPLATE_VERSION);",
+      "expectedOccurrences": 1
+    }
+  ],
+  "checks": [
+    {
+      "name": "Ghost Ship script syntax",
+      "run": "node --check scripts/orphaned-sun-scenes.mjs"
+    },
+    {
+      "name": "Readable scene baseline",
+      "run": "grep -q 'darknessLevel: 0.58' scripts/orphaned-sun-scenes.mjs && grep -q 'darknessLevelLock: false' scripts/orphaned-sun-scenes.mjs && grep -q 'luminosity: 0.35' scripts/orphaned-sun-scenes.mjs"
+    },
+    {
+      "name": "Template version isolated",
+      "run": "grep -q 'GHOST_SHIP_TEMPLATE_VERSION = \"0.3.1\"' scripts/orphaned-sun-scenes.mjs && ! grep -q 'MODULE_VERSION' scripts/orphaned-sun-scenes.mjs"
+    }
+  ]
+}
