@@ -30,7 +30,7 @@
     },
     {
       "name": "No bundled map floor tile remains",
-      "run": "! grep -q 'tiles: \[makeGhostShipMapTile' scripts/orphaned-sun-scenes.mjs && ! grep -q 'sceneData.tiles = \[makeGhostShipMapTile' scripts/orphaned-sun-scenes.mjs"
+      "run": "! grep -Fq 'tiles: [makeGhostShipMapTile' scripts/orphaned-sun-scenes.mjs && ! grep -Fq 'sceneData.tiles = [makeGhostShipMapTile' scripts/orphaned-sun-scenes.mjs"
     },
     {
       "name": "Lighting no longer darkens its own radius",
