@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "project": "comic-book-scene-v1",
+  "title": "Add Comic Book Scene maker to Orphaned Sun Foundry tools",
+  "status": "ready",
+  "phases": [
+    {
+      "order": 1,
+      "id": "comic-core",
+      "title": "Comic scene data model, upload pipeline, layouts, and tile export",
+      "patch": "patches/001-comic-core.patch.json"
+    },
+    {
+      "order": 2,
+      "id": "comic-ui",
+      "title": "Add the Comic Book Scene tab and interactive panel controls",
+      "patch": "patches/002-comic-ui.patch.json"
+    },
+    {
+      "order": 3,
+      "id": "comic-presentation",
+      "title": "Style the comic builder and document the workflow",
+      "patch": "patches/003-comic-presentation.patch.json"
+    },
+    {
+      "order": 4,
+      "id": "release-0-3-0",
+      "title": "Validate package contents and publish module 0.3.0",
+      "patch": "patches/004-release-0-3-0.patch.json"
+    }
+  ],
+  "finalChecks": [
+    {
+      "name": "Module JavaScript syntax",
+      "run": "find scripts -name '*.mjs' -print0 | xargs -0 -n1 node --check"
+    },
+    {
+      "name": "Module manifest parses",
+      "run": "node -e \"const m=JSON.parse(require('fs').readFileSync('module.json','utf8')); if(m.version!=='0.3.0') throw new Error('expected module 0.3.0');\""
+    },
+    {
+      "name": "Comic export defaults panels to hidden",
+      "run": "node -e \"const s=require('fs').readFileSync('scripts/comic-book-maker.mjs','utf8'); if(!s.includes('hidden: true')) throw new Error('hidden comic panel export missing'); if(!s.includes('fit: \\\"cover\\\"')) throw new Error('cover-fit panel texture missing');\""
+    },
+    {
+      "name": "Comic UI and assets are packaged",
+      "run": "test -s templates/scene-library.hbs && test -s assets/comic/paper.svg && test -s assets/comic/frame.svg && grep -q 'Comic Book Scene' templates/scene-library.hbs"
+    }
+  ]
+}

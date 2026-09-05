@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "release-0-3-0",
+  "phase": "release-0-3-0",
+  "summary": "Publish the Comic Book Scene maker as module 0.3.0 without mutating workflow files from the governor. The existing release workflow already packages the recursive assets, scripts, styles, and templates directories.",
+  "operations": [
+    {
+      "op": "json-set",
+      "path": "module.json",
+      "keyPath": ["version"],
+      "expected": "0.2.1",
+      "value": "0.3.0"
+    }
+  ],
+  "checks": [
+    {
+      "name": "Manifest version is 0.3.0",
+      "run": "node -e \"const m=JSON.parse(require('fs').readFileSync('module.json','utf8')); if(m.version!=='0.3.0') throw new Error('expected 0.3.0');\""
+    },
+    {
+      "name": "Existing release workflow packages comic directories",
+      "run": "grep -q 'cp -R assets scripts styles templates' .github/workflows/release.yml && grep -q 'zip -r ../orphaned-sun-scenes.zip module.json README.md assets scripts styles templates' .github/workflows/release.yml"
+    },
+    {
+      "name": "Comic runtime files exist before release dispatch",
+      "run": "test -s scripts/comic-book-maker.mjs && test -s assets/comic/paper.svg && test -s assets/comic/frame.svg"
+    }
+  ]
+}
