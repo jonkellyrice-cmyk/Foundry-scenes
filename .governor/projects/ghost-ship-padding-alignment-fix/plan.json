@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "project": "ghost-ship-padding-alignment-fix",
   "title": "Remove Ghost Ship scene padding and realign managed geometry",
-  "status": "draft",
+  "status": "ready",
   "phases": [
     {
       "order": 1,
