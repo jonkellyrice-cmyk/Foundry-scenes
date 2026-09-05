@@ -23,7 +23,7 @@ Publishing is automated. Changing the versioned `module.json` on `main` runs the
 Large multi-phase development work can be run through the repository's **Phase Patch Governor** instead of being hand-applied as one large edit. It has two explicit stages:
 
 1. **Pre-production** — define the complete phase list, then draft exactly one deterministic patch per phase, in order. GitHub Actions validates each planning push and reports the next phase that still needs a patch.
-2. **Production** — once the plan is marked `ready`, the governor snapshots the sealed patch chain, starts from a fresh `main`, applies and validates every phase in sequence, runs final checks, archives the executed plan, opens a PR, and merges only after everything passes.
+2. **Production** — once the plan is marked `ready`, the governor snapshots the sealed patch chain, starts from a fresh `main`, applies and validates every phase in sequence, runs final checks, archives the executed plan, verifies that `main` has not moved, and then fast-forward merges the validated phase commits only after everything passes.
 
 If a phase fails, the production run stops without merging and reports the failing phase, operation/check, and command. The intended repair is to change only that phase's patch on the planning branch; the governor then replays the corrected chain from a clean baseline.
 
