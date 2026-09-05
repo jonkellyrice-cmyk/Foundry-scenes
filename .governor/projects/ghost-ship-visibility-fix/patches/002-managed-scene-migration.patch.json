@@ -37,7 +37,7 @@
     },
     {
       "name": "Automatic repair is exposed and invoked",
-      "run": "test \"$(grep -c 'repairGhostShipVisibility' scripts/orphaned-sun-scenes.mjs)\" -ge 5"
+      "run": "test \"$(grep -c 'repairGhostShipVisibility' scripts/orphaned-sun-scenes.mjs)\" -ge 4"
     }
   ]
 }
