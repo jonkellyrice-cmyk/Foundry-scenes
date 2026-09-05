@@ -18,6 +18,25 @@ Publishing is automated. Changing the versioned `module.json` on `main` runs the
 
 `https://github.com/jonkellyrice-cmyk/Foundry-scenes/releases/latest/download/orphaned-sun-scenes.zip`
 
+## Phase Patch Governor
+
+Large multi-phase development work can be run through the repository's **Phase Patch Governor** instead of being hand-applied as one large edit. It has two explicit stages:
+
+1. **Pre-production** — define the complete phase list, then draft exactly one deterministic patch per phase, in order. GitHub Actions validates each planning push and reports the next phase that still needs a patch.
+2. **Production** — once the plan is marked `ready`, the governor snapshots the sealed patch chain, starts from a fresh `main`, applies and validates every phase in sequence, runs final checks, archives the executed plan, opens a PR, and merges only after everything passes.
+
+If a phase fails, the production run stops without merging and reports the failing phase, operation/check, and command. The intended repair is to change only that phase's patch on the planning branch; the governor then replays the corrected chain from a clean baseline.
+
+Planning branches use `governor-plan/<project>`. Production branches are generated automatically as `governor-run/<project>/<run-id>-<attempt>`.
+
+Full schema, lifecycle, repair procedure, and examples are in [`docs/PATCH_GOVERNOR.md`](docs/PATCH_GOVERNOR.md). The governor itself is under `dev/` and is not included in the downloadable Foundry module package.
+
+Run its regression test locally with:
+
+```bash
+npm run governor:test
+```
+
 ## Scene Library UI
 
 For GMs, the module adds an **Orphaned Sun Scenes** icon at the bottom of Foundry's left-hand Scene Controls toolbar. Clicking it opens a normal movable Foundry window which can be resized, minimized, restored, and closed.
