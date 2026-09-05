@@ -216,6 +216,292 @@ export function collectDomPointProbe(x, y) {
   };
 }
 
+function colorValueTelemetry(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const rgb = Math.max(0, Math.min(0xffffff, Math.trunc(value)));
+    const r = (rgb >> 16) & 0xff;
+    const g = (rgb >> 8) & 0xff;
+    const b = rgb & 0xff;
+    return {
+      value,
+      hex: `#${rgb.toString(16).padStart(6, "0")}`,
+      green: g >= 115 && g >= r * 1.35 && g >= b * 1.25
+    };
+  }
+  if (typeof value === "string") {
+    return { value, hex: value, green: isStrongGreen(value) };
+  }
+  return null;
+}
+
+function safeDisplayBounds(displayObject) {
+  try {
+    const bounds = displayObject?.getBounds?.();
+    if (!bounds) return null;
+    const x = finite(bounds.x ?? bounds.minX, NaN);
+    const y = finite(bounds.y ?? bounds.minY, NaN);
+    const width = finite(bounds.width ?? ((bounds.maxX ?? NaN) - (bounds.minX ?? NaN)), NaN);
+    const height = finite(bounds.height ?? ((bounds.maxY ?? NaN) - (bounds.minY ?? NaN)), NaN);
+    if (![x, y, width, height].every(Number.isFinite)) return null;
+    return { x: round(x), y: round(y), width: round(width), height: round(height) };
+  } catch {
+    return null;
+  }
+}
+
+function boundsContainPoint(bounds, point) {
+  if (!bounds || !point) return false;
+  return point.x >= bounds.x
+    && point.y >= bounds.y
+    && point.x <= bounds.x + bounds.width
+    && point.y <= bounds.y + bounds.height;
+}
+
+function displayIdentity(displayObject) {
+  const doc = displayObject?.document;
+  return {
+    className: displayObject?.constructor?.name ?? "Unknown",
+    name: String(displayObject?.name ?? displayObject?.label ?? ""),
+    document: doc ? {
+      documentName: doc.documentName ?? doc.constructor?.name ?? "",
+      id: doc.id ?? "",
+      name: doc.name ?? ""
+    } : null
+  };
+}
+
+function displayParentChain(displayObject) {
+  const chain = [];
+  let cursor = displayObject?.parent ?? null;
+  for (let depth = 0; cursor && depth < 10; depth += 1) {
+    chain.push({
+      className: cursor.constructor?.name ?? "Unknown",
+      name: String(cursor.name ?? cursor.label ?? "")
+    });
+    cursor = cursor.parent ?? null;
+  }
+  return chain;
+}
+
+function displayVisualProperties(displayObject) {
+  const interesting = new Set([
+    "tint", "color", "fillColor", "backgroundColor", "_tintRGB",
+    "alpha", "worldAlpha", "blendMode", "zIndex", "sort", "elevation", "eventMode"
+  ]);
+  const discovered = Object.keys(displayObject ?? {})
+    .filter(key => /(tint|color|fill|alpha|blend|zindex|sort|elevation)/i.test(key))
+    .slice(0, 24);
+  const properties = {};
+  const greenSignals = [];
+
+  for (const key of [...interesting, ...discovered]) {
+    if (Object.prototype.hasOwnProperty.call(properties, key)) continue;
+    let value;
+    try {
+      value = displayObject?.[key];
+    } catch {
+      continue;
+    }
+    if (["string", "number", "boolean"].includes(typeof value) || value == null) {
+      properties[key] = value;
+      if (/(tint|color|fill)/i.test(key)) {
+        const color = colorValueTelemetry(value);
+        if (color?.green) greenSignals.push({ path: key, ...color });
+      }
+      continue;
+    }
+    if (typeof value !== "object") continue;
+    const nested = {};
+    for (const nestedKey of Object.keys(value).filter(item => /(tint|color|fill|alpha)/i.test(item)).slice(0, 8)) {
+      let nestedValue;
+      try {
+        nestedValue = value[nestedKey];
+      } catch {
+        continue;
+      }
+      if (!["string", "number", "boolean"].includes(typeof nestedValue) && nestedValue != null) continue;
+      nested[nestedKey] = nestedValue;
+      if (/(tint|color|fill)/i.test(nestedKey)) {
+        const color = colorValueTelemetry(nestedValue);
+        if (color?.green) greenSignals.push({ path: `${key}.${nestedKey}`, ...color });
+      }
+    }
+    if (Object.keys(nested).length) properties[key] = nested;
+  }
+
+  return { properties, greenSignals };
+}
+
+function displayObjectTelemetry(displayObject, depth, rendererPoint, scenePoint) {
+  const bounds = safeDisplayBounds(displayObject);
+  const visual = displayVisualProperties(displayObject);
+  let containsPoint = false;
+  if (typeof displayObject?.containsPoint === "function") {
+    try {
+      containsPoint = Boolean(displayObject.containsPoint(rendererPoint));
+    } catch {
+      containsPoint = false;
+    }
+  }
+  return {
+    ...displayIdentity(displayObject),
+    depth,
+    visible: displayObject?.visible !== false,
+    renderable: displayObject?.renderable !== false,
+    alpha: round(displayObject?.alpha ?? 1, 3),
+    worldAlpha: round(displayObject?.worldAlpha ?? displayObject?.alpha ?? 1, 3),
+    zIndex: finite(displayObject?.zIndex),
+    sort: finite(displayObject?.sort ?? displayObject?.sortOrder),
+    childCount: Array.isArray(displayObject?.children) ? displayObject.children.length : 0,
+    bounds,
+    hitRendererBounds: boundsContainPoint(bounds, rendererPoint),
+    hitSceneBounds: boundsContainPoint(bounds, scenePoint),
+    containsPoint,
+    mask: displayObject?.mask ? displayIdentity(displayObject.mask) : null,
+    filters: list(displayObject?.filters).map(filter => filter?.constructor?.name ?? "Unknown"),
+    parentChain: displayParentChain(displayObject),
+    visualProperties: visual.properties,
+    greenSignals: visual.greenSignals
+  };
+}
+
+function canvasCoordinateTelemetry(x, y) {
+  const board = document.getElementById("board");
+  const rect = board?.getBoundingClientRect?.();
+  const renderer = globalThis.canvas?.app?.renderer;
+  const stage = globalThis.canvas?.stage;
+  const client = { x: finite(x), y: finite(y) };
+  const rendererWidth = finite(renderer?.screen?.width ?? rect?.width, rect?.width ?? 0);
+  const rendererHeight = finite(renderer?.screen?.height ?? rect?.height, rect?.height ?? 0);
+  const rendererPoint = rect && rect.width > 0 && rect.height > 0
+    ? {
+        x: (client.x - rect.left) * (rendererWidth / rect.width),
+        y: (client.y - rect.top) * (rendererHeight / rect.height)
+      }
+    : { ...client };
+
+  let scenePoint = null;
+  try {
+    const inverse = stage?.worldTransform?.applyInverse?.(rendererPoint);
+    if (Number.isFinite(inverse?.x) && Number.isFinite(inverse?.y)) {
+      scenePoint = { x: inverse.x, y: inverse.y };
+    }
+  } catch {
+    scenePoint = null;
+  }
+  if (!scenePoint) {
+    const scaleX = finite(stage?.scale?.x, 1) || 1;
+    const scaleY = finite(stage?.scale?.y, 1) || 1;
+    const positionX = finite(stage?.position?.x);
+    const positionY = finite(stage?.position?.y);
+    const pivotX = finite(stage?.pivot?.x);
+    const pivotY = finite(stage?.pivot?.y);
+    scenePoint = {
+      x: ((rendererPoint.x - positionX) / scaleX) + pivotX,
+      y: ((rendererPoint.y - positionY) / scaleY) + pivotY
+    };
+  }
+
+  return {
+    client: { x: round(client.x), y: round(client.y) },
+    renderer: { x: round(rendererPoint.x), y: round(rendererPoint.y) },
+    scene: { x: round(scenePoint.x), y: round(scenePoint.y) },
+    board: rect ? {
+      x: round(rect.x),
+      y: round(rect.y),
+      width: round(rect.width),
+      height: round(rect.height)
+    } : null,
+    rendererScreen: { width: round(rendererWidth), height: round(rendererHeight) }
+  };
+}
+
+function topLevelCanvasGroups(stage, rendererPoint, scenePoint) {
+  return list(stage?.children).map((child, index) => {
+    const item = displayObjectTelemetry(child, 1, rendererPoint, scenePoint);
+    return {
+      order: index,
+      className: item.className,
+      name: item.name,
+      visible: item.visible,
+      renderable: item.renderable,
+      alpha: item.alpha,
+      worldAlpha: item.worldAlpha,
+      zIndex: item.zIndex,
+      childCount: item.childCount,
+      bounds: item.bounds,
+      hitRendererBounds: item.hitRendererBounds,
+      hitSceneBounds: item.hitSceneBounds,
+      greenSignals: item.greenSignals
+    };
+  });
+}
+
+export function collectCanvasPointProbe(x, y) {
+  const stage = globalThis.canvas?.stage;
+  if (!stage) {
+    return {
+      status: "Canvas stage unavailable",
+      coordinates: canvasCoordinateTelemetry(x, y),
+      hits: [],
+      topLevelGroups: [],
+      traversed: 0
+    };
+  }
+
+  const coordinates = canvasCoordinateTelemetry(x, y);
+  const rendererPoint = coordinates.renderer;
+  const scenePoint = coordinates.scene;
+  const hits = [];
+  const stack = [{ node: stage, depth: 0 }];
+  let traversed = 0;
+  const maxObjects = 5000;
+
+  while (stack.length && traversed < maxObjects) {
+    const { node, depth } = stack.pop();
+    traversed += 1;
+    const telemetry = displayObjectTelemetry(node, depth, rendererPoint, scenePoint);
+    if (telemetry.visible && telemetry.renderable
+      && (telemetry.hitRendererBounds || telemetry.hitSceneBounds || telemetry.containsPoint || telemetry.greenSignals.length)) {
+      hits.push(telemetry);
+    }
+    const children = list(node?.children);
+    for (let index = children.length - 1; index >= 0; index -= 1) {
+      stack.push({ node: children[index], depth: depth + 1 });
+    }
+  }
+
+  hits.sort((a, b) => {
+    const aPoint = Number(a.containsPoint) + Number(a.hitRendererBounds) + Number(a.hitSceneBounds);
+    const bPoint = Number(b.containsPoint) + Number(b.hitRendererBounds) + Number(b.hitSceneBounds);
+    if (aPoint !== bPoint) return bPoint - aPoint;
+    if (a.greenSignals.length !== b.greenSignals.length) return b.greenSignals.length - a.greenSignals.length;
+    if (a.depth !== b.depth) return b.depth - a.depth;
+    const aArea = (a.bounds?.width ?? Infinity) * (a.bounds?.height ?? Infinity);
+    const bArea = (b.bounds?.width ?? Infinity) * (b.bounds?.height ?? Infinity);
+    return aArea - bArea;
+  });
+
+  return {
+    status: hits.length ? "Captured" : "No PIXI display objects matched the point",
+    coordinates,
+    traversed,
+    truncated: traversed >= maxObjects,
+    hitCount: hits.length,
+    greenSignalCount: hits.reduce((sum, item) => sum + item.greenSignals.length, 0),
+    hits: hits.slice(0, 80),
+    topLevelGroups: topLevelCanvasGroups(stage, rendererPoint, scenePoint)
+  };
+}
+
+export function collectArtifactPointProbe(x, y) {
+  return {
+    capturedAt: new Date().toISOString(),
+    dom: collectDomPointProbe(x, y),
+    canvas: collectCanvasPointProbe(x, y)
+  };
+}
+
 function collectGreenDomCandidates() {
   if (!globalThis.document?.body || !globalThis.getComputedStyle) return [];
   const candidates = [];
@@ -313,7 +599,7 @@ function canvasTelemetry(scene) {
   };
 }
 
-export async function collectSceneDiagnostics(scene, { pointProbe = null } = {}) {
+export async function collectSceneDiagnostics(scene, { pointProbe = null, canvasPointProbe = null } = {}) {
   if (!scene) {
     const domGreen = collectGreenDomCandidates();
     return {
@@ -322,7 +608,8 @@ export async function collectSceneDiagnostics(scene, { pointProbe = null } = {})
       greenDomCandidates: domGreen,
       greenArtifactCandidates: domGreen.length,
       pointProbe,
-      raw: { available: false, greenDomCandidates: domGreen, pointProbe }
+      canvasPointProbe,
+      raw: { available: false, greenDomCandidates: domGreen, pointProbe, canvasPointProbe }
     };
   }
 
@@ -339,6 +626,7 @@ export async function collectSceneDiagnostics(scene, { pointProbe = null } = {})
   ];
   const greenDomCandidates = collectGreenDomCandidates();
   const pickedPoint = pointProbe ?? null;
+  const pickedCanvasPoint = canvasPointProbe ?? null;
   const background = await probeImage(String(scene.background?.src ?? ""));
   const canvas = canvasTelemetry(scene);
   const counts = {
@@ -362,6 +650,7 @@ export async function collectSceneDiagnostics(scene, { pointProbe = null } = {})
   if (greenDomCandidates.length) warnings.push(`${greenDomCandidates.length} visible DOM element(s) have a strong green background; the green artifact may be UI/CSS rather than Scene content.`);
   if (!greenSceneCandidates.length && greenDomCandidates.length) warnings.push("No green Scene documents were found while green UI surfaces were detected. This strongly points away from the map/wall/light data.");
   if (pickedPoint?.stack?.length) warnings.push(`Direct artifact-point probe captured ${pickedPoint.stack.length} DOM layer(s) at x${pickedPoint.x}, y${pickedPoint.y}; inspect the point stack and matching CSS rules.`);
+  if (pickedCanvasPoint?.hitCount) warnings.push(`Canvas/PIXI point probe matched ${pickedCanvasPoint.hitCount} display object(s); inspect render-tree hits, parent chains, bounds, and green color signals.`);
 
   const raw = {
     generatedAt: new Date().toISOString(),
@@ -378,6 +667,7 @@ export async function collectSceneDiagnostics(scene, { pointProbe = null } = {})
     greenSceneCandidates,
     greenDomCandidates,
     pointProbe: pickedPoint,
+    canvasPointProbe: pickedCanvasPoint,
     warnings
   };
 
@@ -400,8 +690,11 @@ export async function collectSceneDiagnostics(scene, { pointProbe = null } = {})
     greenSceneCandidates,
     greenDomCandidates,
     pointProbe: pickedPoint,
+    canvasPointProbe: pickedCanvasPoint,
     greenArtifactCandidates: greenSceneCandidates.length + greenDomCandidates.length,
-    artifactAssessment: pickedPoint?.stack?.length
+    artifactAssessment: pickedCanvasPoint?.hitCount
+      ? `A canvas/PIXI render-tree probe matched ${pickedCanvasPoint.hitCount} display object(s) at the picked point. Use those render-tree hits as the primary artifact evidence.`
+      : pickedPoint?.stack?.length
       ? `A direct DOM stack was captured at x${pickedPoint.x}, y${pickedPoint.y}. Use that stack and its matching CSS rules as the primary artifact evidence.`
       : greenSceneCandidates.length
       ? "Scene-level visual suspects were found. Inspect their IDs and properties below."
