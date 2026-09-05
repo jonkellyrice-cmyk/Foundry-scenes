@@ -3,6 +3,8 @@ const GHOST_SHIP_TEMPLATE_VERSION = "0.3.1";
 const GHOST_SHIP_KEY = "signatory-ghost-ship";
 const GHOST_SHIP_NAME = "Signatory Ghost Ship — Derelict Accord Vessel";
 const MAP_PATH = `modules/${MODULE_ID}/assets/maps/signatory-ghost-ship.webp`;
+const MAP_REMOTE_FALLBACK = "https://raw.githubusercontent.com/jonkellyrice-cmyk/Foundry-scenes/main/assets/maps/signatory-ghost-ship.webp";
+const MAP_FILENAME = "signatory-ghost-ship.webp";
 
 Hooks.once("init", () => {
   game.settings.register(MODULE_ID, "autoCreateGhostShip", {
@@ -250,6 +252,73 @@ function buildGhostShipLights() {
   ];
 }
 
+function makeGhostShipMapTile(src) {
+  return {
+    texture: { src, fit: "fill" },
+    x: 0,
+    y: 0,
+    width: 1672,
+    height: 941,
+    elevation: -1000,
+    sort: -1000,
+    rotation: 0,
+    alpha: 1,
+    hidden: false,
+    locked: true,
+    restrictions: { light: false, weather: false },
+    flags: {
+      [MODULE_ID]: {
+        ghostShipMapFloor: true,
+        sourceVersion: GHOST_SHIP_TEMPLATE_VERSION
+      }
+    }
+  };
+}
+
+async function fetchGhostShipMapBlob() {
+  const failures = [];
+  for (const source of [MAP_PATH, MAP_REMOTE_FALLBACK]) {
+    try {
+      const response = await fetch(source, { cache: "no-store" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const blob = await response.blob();
+      if (!blob.size) throw new Error("empty image response");
+      return blob;
+    } catch (error) {
+      failures.push(`${source}: ${error?.message ?? error}`);
+    }
+  }
+  throw new Error(`Could not load the bundled Ghost Ship artwork. ${failures.join(" | ")}`);
+}
+
+async function provisionGhostShipMapAsset() {
+  const FilePicker = foundry.applications.apps.FilePicker?.implementation ?? globalThis.FilePicker;
+  const worldId = game.world?.id;
+  if (!FilePicker || !worldId) throw new Error("Foundry FilePicker or world ID is unavailable.");
+
+  const directories = [
+    `worlds/${worldId}/orphaned-sun-scenes`,
+    `worlds/${worldId}/orphaned-sun-scenes/maps`
+  ];
+  for (const directory of directories) {
+    try {
+      await FilePicker.createDirectory("data", directory, {});
+    } catch (error) {
+      if (!/exists/i.test(String(error?.message ?? error))) {
+        console.warn(`${MODULE_ID} | Could not create ${directory}`, error);
+      }
+    }
+  }
+
+  const blob = await fetchGhostShipMapBlob();
+  const file = new File([blob], MAP_FILENAME, { type: blob.type || "image/webp" });
+  const directory = directories.at(-1);
+  const response = await FilePicker.upload("data", directory, file, {}, { notify: false });
+  const path = typeof response?.path === "string" && response.path ? response.path : `${directory}/${MAP_FILENAME}`;
+  console.info(`${MODULE_ID} | Provisioned Ghost Ship artwork at ${path}`);
+  return path;
+}
+
 export function getGhostShipSceneData() {
   return {
     name: GHOST_SHIP_NAME,
@@ -290,6 +359,7 @@ export function getGhostShipSceneData() {
     initial: { x: 836, y: 470, scale: 0.72 },
     walls: buildGhostShipWalls(),
     lights: buildGhostShipLights(),
+    tiles: [makeGhostShipMapTile(MAP_PATH)],
     flags: {
       [MODULE_ID]: {
         sceneKey: GHOST_SHIP_KEY,
@@ -338,7 +408,11 @@ export async function ensureGhostShipScene() {
     }
   }
 
-  const scene = await Scene.create(getGhostShipSceneData());
+  const mapSrc = await provisionGhostShipMapAsset();
+  const sceneData = getGhostShipSceneData();
+  sceneData.background.src = mapSrc;
+  sceneData.tiles = [makeGhostShipMapTile(mapSrc)];
+  const scene = await Scene.create(sceneData);
   await game.settings.set(MODULE_ID, "ghostShipSeedVersion", GHOST_SHIP_TEMPLATE_VERSION);
   ui.notifications?.info("Orphaned Sun Scenes: Signatory Ghost Ship created with walls and dynamic lighting.");
   return scene;
