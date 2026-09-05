@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "id": "lighting-pass",
+  "phase": "lighting-pass",
+  "summary": "Make Foundry's actual Ambient Lights visibly illuminate the dark Ghost Ship art. Remove the shader setting that was darkening textures inside each light, strengthen emitted light and radius, tag generated lights for future migrations, and refresh the existing scene's generated lights in place.",
+  "operations": [
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "function makeLight(x, y, { dim, bright = 0, color, alpha = 0.35, animation = null, name }) {\n  const config = {\n    dim,\n    bright,\n    angle: 360,\n    color,\n    alpha,\n    attenuation: 0.55,\n    luminosity: 0.35,\n    saturation: 0,\n    contrast: 0,\n    shadows: 0.75\n  };\n  if (animation) config.animation = animation;\n  return { x, y, walls: true, vision: false, hidden: false, name, config, flags: {} };\n}",
+      "after": "function makeLight(x, y, { dim, bright = 0, color, alpha = 0.35, animation = null, name }) {\n  const config = {\n    // Foundry distances are scene distance units. Scale the authored values so\n    // surviving fixtures illuminate a useful portion of these cramped rooms.\n    dim: dim * 1.6,\n    bright: bright * 2,\n    angle: 360,\n    color,\n    alpha: Math.max(alpha, 0.48),\n    attenuation: 0.45,\n    luminosity: 0.72,\n    saturation: 0,\n    contrast: 0.05,\n    // Wall geometry already creates the actual cast shadows. A high Background\n    // Shadows shader value was instead darkening the artwork inside the light.\n    shadows: 0,\n    darkness: { min: 0, max: 1 }\n  };\n  if (animation) config.animation = animation;\n  return {\n    x, y, walls: true, vision: false, hidden: false, name, config,\n    flags: {\n      [MODULE_ID]: {\n        ghostShipManagedLight: true,\n        sourceVersion: GHOST_SHIP_TEMPLATE_VERSION\n      }\n    }\n  };\n}",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "  ];\n}\n\nfunction getGhostShipManagedFloorTiles(scene) {",
+      "after": "  ];\n}\n\nasync function replaceGhostShipManagedLights(scene) {\n  const freshLights = buildGhostShipLights();\n  const authoredNames = new Set(freshLights.map(light => light.name));\n  const existing = Array.from(scene?.lights ?? []).filter(light =>\n    Boolean(light.getFlag?.(MODULE_ID, \"ghostShipManagedLight\")) || authoredNames.has(light.name)\n  );\n\n  if (existing.length) {\n    await scene.deleteEmbeddedDocuments(\"AmbientLight\", existing.map(light => light.id));\n  }\n  await scene.createEmbeddedDocuments(\"AmbientLight\", freshLights);\n}\n\nfunction getGhostShipManagedFloorTiles(scene) {",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "      darknessLevel: 0.58,",
+      "after": "      darknessLevel: 0.42,",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "  const legacyBlackPreset = darkness >= 0.84;",
+      "after": "  const legacyOverdarkPreset = darkness > 0.45;",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "  if (!needsMapDeliveryRepair && !legacyBlackPreset) return target;",
+      "after": "  if (!needsMapDeliveryRepair && !legacyOverdarkPreset) return target;",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "  if (legacyBlackPreset) {\n    update[\"environment.darknessLevel\"] = 0.58;\n    update[\"environment.darknessLevelLock\"] = false;\n  }",
+      "after": "  if (legacyOverdarkPreset) {\n    update[\"environment.darknessLevel\"] = 0.42;\n    update[\"environment.darknessLevelLock\"] = false;\n  }",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "  if (managedFloorTiles.length) {\n    await target.deleteEmbeddedDocuments(\"Tile\", managedFloorTiles.map(tile => tile.id));\n  }\n\n  ui.notifications?.info(\"Orphaned Sun Scenes: repaired Ghost Ship map delivery and removed the obsolete duplicate floor image.\");",
+      "after": "  if (managedFloorTiles.length) {\n    await target.deleteEmbeddedDocuments(\"Tile\", managedFloorTiles.map(tile => tile.id));\n  }\n  if (needsVersionedMapRepair) {\n    await replaceGhostShipManagedLights(target);\n  }\n\n  ui.notifications?.info(\"Orphaned Sun Scenes: repaired the Ghost Ship map layer and refreshed its dynamic lights.\");",
+      "expectedOccurrences": 1
+    }
+  ],
+  "checks": [
+    {
+      "name": "Ghost Ship script syntax",
+      "run": "node --check scripts/orphaned-sun-scenes.mjs"
+    },
+    {
+      "name": "Light shader correction",
+      "run": "grep -q 'shadows: 0' scripts/orphaned-sun-scenes.mjs && grep -q 'luminosity: 0.72' scripts/orphaned-sun-scenes.mjs && grep -q 'alpha: Math.max(alpha, 0.48)' scripts/orphaned-sun-scenes.mjs"
+    },
+    {
+      "name": "Managed light refresh",
+      "run": "grep -q 'ghostShipManagedLight: true' scripts/orphaned-sun-scenes.mjs && grep -q 'replaceGhostShipManagedLights(target)' scripts/orphaned-sun-scenes.mjs"
+    },
+    {
+      "name": "Readable scene darkness",
+      "run": "grep -q 'darknessLevel: 0.42' scripts/orphaned-sun-scenes.mjs"
+    }
+  ]
+}

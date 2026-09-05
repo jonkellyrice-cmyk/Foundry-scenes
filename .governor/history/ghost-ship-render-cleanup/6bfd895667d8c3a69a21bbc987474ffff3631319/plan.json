@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "project": "ghost-ship-render-cleanup",
+  "title": "Remove duplicate map tile artifact and make Ghost Ship dynamic lighting visibly effective",
+  "status": "ready",
+  "phases": [
+    {
+      "order": 1,
+      "id": "single-map-layer",
+      "title": "Use only the Scene background and remove all managed Ghost Ship floor tiles",
+      "patch": "patches/001-single-map-layer.patch.json"
+    },
+    {
+      "order": 2,
+      "id": "lighting-pass",
+      "title": "Correct ambient-light shader settings, strengthen radii, and migrate existing Ghost Ship lights",
+      "patch": "patches/002-lighting-pass.patch.json"
+    },
+    {
+      "order": 3,
+      "id": "release-0-3-5",
+      "title": "Publish render and dynamic-lighting cleanup as module 0.3.5",
+      "patch": "patches/003-release-0-3-5.patch.json"
+    }
+  ],
+  "finalChecks": [
+    {
+      "name": "Module JavaScript syntax",
+      "run": "find scripts -name '*.mjs' -print0 | xargs -0 -n1 node --check"
+    },
+    {
+      "name": "No bundled map floor tile remains",
+      "run": "! grep -Fq 'tiles: [makeGhostShipMapTile' scripts/orphaned-sun-scenes.mjs && ! grep -Fq 'sceneData.tiles = [makeGhostShipMapTile' scripts/orphaned-sun-scenes.mjs"
+    },
+    {
+      "name": "Lighting no longer darkens its own radius",
+      "run": "grep -q 'shadows: 0' scripts/orphaned-sun-scenes.mjs && grep -q 'luminosity: 0.72' scripts/orphaned-sun-scenes.mjs"
+    },
+    {
+      "name": "Managed light migration exists",
+      "run": "grep -q 'ghostShipManagedLight' scripts/orphaned-sun-scenes.mjs && grep -q 'replaceGhostShipManagedLights' scripts/orphaned-sun-scenes.mjs"
+    },
+    {
+      "name": "Manifest version",
+      "run": "node -e \"const m=JSON.parse(require('fs').readFileSync('module.json','utf8')); if(m.version!=='0.3.5') throw new Error('expected module 0.3.5');\""
+    }
+  ]
+}
