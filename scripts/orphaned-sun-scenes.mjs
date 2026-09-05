@@ -55,7 +55,7 @@ function wallData(c, { door = 0, state = 0 } = {}) {
     dir: 0,
     door,
     ds: state,
-    threshold: { light: 0, sight: 0, sound: 0, attenuation: false },
+    threshold: { light: null, sight: null, sound: null, attenuation: false },
     flags: {}
   };
 }
