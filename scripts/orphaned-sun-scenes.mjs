@@ -403,8 +403,11 @@ export async function repairGhostShipVisibility(scene = null) {
   const floorTiles = Array.from(target.tiles ?? []);
   const managedFloorTile = floorTiles.find(tile => tile.getFlag?.(MODULE_ID, "ghostShipMapFloor")) ?? null;
   const hasManagedFloorTile = Boolean(managedFloorTile);
-  const needsVersionedMapRepair = sourceVersion !== "0.3.3";
-  const needsMapDeliveryRepair = usesBundledBackground || !hasManagedFloorTile || needsVersionedMapRepair;
+  const managedFloorSrc = String(managedFloorTile?.texture?.src ?? "");
+  const hasLegacyWebpReference = backgroundSrc.includes("signatory-ghost-ship.webp")
+    || managedFloorSrc.includes("signatory-ghost-ship.webp");
+  const needsVersionedMapRepair = sourceVersion !== GHOST_SHIP_TEMPLATE_VERSION;
+  const needsMapDeliveryRepair = usesBundledBackground || !hasManagedFloorTile || needsVersionedMapRepair || hasLegacyWebpReference;
   if (!needsMapDeliveryRepair && !legacyBlackPreset) return target;
 
   let mapSrc = backgroundSrc;
