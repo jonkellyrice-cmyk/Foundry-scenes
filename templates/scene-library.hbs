@@ -4,6 +4,10 @@
       <i class="fa-solid fa-map-location-dot" aria-hidden="true"></i>
       Scene Library
     </button>
+    <button type="button" class="{{#if tabDiagnostics}}is-active{{/if}}" data-action="showDiagnostics">
+      <i class="fa-solid fa-stethoscope" aria-hidden="true"></i>
+      Scene Library Diagnostics
+    </button>
     <button type="button" class="{{#if tabComic}}is-active{{/if}}" data-action="showComic">
       <i class="fa-solid fa-book-open" aria-hidden="true"></i>
       Comic Book Scene
@@ -115,6 +119,183 @@
       <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
       <span>Imported scenes are normal Foundry scenes. Edit walls, lights, doors, sounds, tokens, and scene settings normally; the module will not silently overwrite those edits.</span>
     </footer>
+  {{/if}}
+
+  {{#if tabDiagnostics}}
+    <header class="os-library-summary os-diagnostics-summary">
+      <div>
+        <p class="os-library-kicker">MODULE v{{moduleVersion}} · READ-ONLY TELEMETRY</p>
+        <h2>Scene Library Diagnostics</h2>
+        <p>Live Foundry telemetry for the managed Ghost Ship scene. This panel does not modify the scene; it exists so troubleshooting can happen without hunting through the browser console.</p>
+      </div>
+      <div class="os-library-summary-stats" aria-label="Diagnostic suspect summary">
+        <strong>{{diagnostics.greenArtifactCandidates}}</strong>
+        <span>visual suspects</span>
+      </div>
+    </header>
+
+    <div class="os-library-toolbar">
+      <button type="button" data-action="diagnosticsRefresh">
+        <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i> Refresh telemetry
+      </button>
+      <button type="button" data-action="diagnosticsCopy">
+        <i class="fa-solid fa-clipboard" aria-hidden="true"></i> Copy diagnostic JSON
+      </button>
+    </div>
+
+    {{#if diagnostics.available}}
+      <div class="os-diagnostics-grid">
+        <section class="os-diagnostic-card">
+          <h3><i class="fa-solid fa-image"></i> Map asset</h3>
+          <dl class="os-diagnostic-kv">
+            <div><dt>Status</dt><dd class="{{#if diagnostics.background.ok}}is-good{{else}}is-bad{{/if}}">{{diagnostics.background.status}}</dd></div>
+            <div><dt>Decoded size</dt><dd>{{diagnostics.background.width}} × {{diagnostics.background.height}}</dd></div>
+            <div><dt>Bytes</dt><dd>{{diagnostics.background.bytes}}</dd></div>
+            <div><dt>MIME</dt><dd>{{diagnostics.background.type}}</dd></div>
+          </dl>
+          <p class="os-diagnostic-path" title="{{diagnostics.background.src}}">{{diagnostics.background.src}}</p>
+        </section>
+
+        <section class="os-diagnostic-card">
+          <h3><i class="fa-solid fa-ruler-combined"></i> Scene geometry</h3>
+          <dl class="os-diagnostic-kv">
+            <div><dt>Canonical</dt><dd class="{{#if diagnostics.geometry.canonical}}is-good{{else}}is-bad{{/if}}">{{#if diagnostics.geometry.canonical}}Yes{{else}}No{{/if}}</dd></div>
+            <div><dt>Scene</dt><dd>{{diagnostics.geometry.width}} × {{diagnostics.geometry.height}}</dd></div>
+            <div><dt>Padding</dt><dd>{{diagnostics.geometry.padding}}</dd></div>
+            <div><dt>sceneX / sceneY</dt><dd>{{diagnostics.geometry.sceneX}} / {{diagnostics.geometry.sceneY}}</dd></div>
+            <div><dt>Canvas</dt><dd>{{diagnostics.geometry.canvasWidth}} × {{diagnostics.geometry.canvasHeight}}</dd></div>
+            <div><dt>BG scale</dt><dd>{{diagnostics.geometry.backgroundScaleX}} / {{diagnostics.geometry.backgroundScaleY}}</dd></div>
+            <div><dt>BG offset</dt><dd>{{diagnostics.geometry.backgroundOffsetX}} / {{diagnostics.geometry.backgroundOffsetY}}</dd></div>
+            <div><dt>BG rotation</dt><dd>{{diagnostics.geometry.backgroundRotation}}</dd></div>
+          </dl>
+        </section>
+
+        <section class="os-diagnostic-card">
+          <h3><i class="fa-solid fa-display"></i> Canvas runtime</h3>
+          <dl class="os-diagnostic-kv">
+            <div><dt>Canvas ready</dt><dd>{{#if diagnostics.canvas.ready}}Yes{{else}}No{{/if}}</dd></div>
+            <div><dt>Viewing this scene</dt><dd>{{#if diagnostics.canvas.viewedScene}}Yes{{else}}No{{/if}}</dd></div>
+            <div><dt>Active layer</dt><dd>{{diagnostics.canvas.activeLayer}}</dd></div>
+            <div><dt>Stage scale</dt><dd>{{diagnostics.canvas.stageScaleX}} / {{diagnostics.canvas.stageScaleY}}</dd></div>
+            <div><dt>Stage pivot</dt><dd>{{diagnostics.canvas.stagePivotX}} / {{diagnostics.canvas.stagePivotY}}</dd></div>
+            <div><dt>Browser viewport</dt><dd>{{diagnostics.canvas.screenWidth}} × {{diagnostics.canvas.screenHeight}}</dd></div>
+          </dl>
+        </section>
+
+        <section class="os-diagnostic-card">
+          <h3><i class="fa-solid fa-layer-group"></i> Embedded documents</h3>
+          <div class="os-diagnostic-counts">
+            <span><strong>{{diagnostics.counts.walls}}</strong> Walls</span>
+            <span><strong>{{diagnostics.counts.doors}}</strong> Doors</span>
+            <span><strong>{{diagnostics.counts.lights}}</strong> Lights</span>
+            <span><strong>{{diagnostics.counts.tiles}}</strong> Tiles</span>
+            <span><strong>{{diagnostics.counts.tokens}}</strong> Tokens</span>
+            <span><strong>{{diagnostics.counts.drawings}}</strong> Drawings</span>
+            <span><strong>{{diagnostics.counts.regions}}</strong> Regions</span>
+            <span><strong>{{diagnostics.counts.templates}}</strong> Templates</span>
+            <span><strong>{{diagnostics.counts.sounds}}</strong> Sounds</span>
+            <span><strong>{{diagnostics.counts.notes}}</strong> Notes</span>
+          </div>
+        </section>
+      </div>
+
+      <section class="os-diagnostic-card os-artifact-probe">
+        <div class="os-diagnostic-heading">
+          <div>
+            <p class="os-library-kicker">TARGETED VISUAL TELEMETRY</p>
+            <h3><i class="fa-solid fa-eye"></i> Green artifact probe</h3>
+          </div>
+          <span class="os-diagnostic-badge">{{diagnostics.greenArtifactCandidates}} candidates</span>
+        </div>
+        <p>{{diagnostics.artifactAssessment}}</p>
+
+        <div class="os-diagnostic-suspect-columns">
+          <div>
+            <h4>Scene document suspects</h4>
+            {{#each diagnostics.greenSceneCandidates}}
+              <article class="os-diagnostic-suspect">
+                <strong>{{type}} · {{id}}</strong>
+                <span>{{reason}}</span>
+                <code>{{detail}}</code>
+              </article>
+            {{else}}
+              <p class="os-diagnostic-empty">No green/oversized Tile or Drawing suspects detected in the Scene document.</p>
+            {{/each}}
+          </div>
+          <div>
+            <h4>Browser UI / DOM green surfaces</h4>
+            {{#each diagnostics.greenDomCandidates}}
+              <article class="os-diagnostic-suspect">
+                <strong>&lt;{{tag}}&gt; {{#if id}}#{{id}}{{/if}} {{classes}}</strong>
+                <span>{{background}} · {{position}} · z {{zIndex}}</span>
+                <code>x{{x}} y{{y}} · {{width}}×{{height}}</code>
+              </article>
+            {{else}}
+              <p class="os-diagnostic-empty">No large visible DOM element with a strong-green computed background was detected.</p>
+            {{/each}}
+          </div>
+        </div>
+      </section>
+
+      {{#if diagnostics.hasWarnings}}
+        <section class="os-diagnostic-card os-diagnostic-warnings">
+          <h3><i class="fa-solid fa-triangle-exclamation"></i> Diagnostic observations</h3>
+          <ul>
+            {{#each diagnostics.warnings}}<li>{{this}}</li>{{/each}}
+          </ul>
+        </section>
+      {{/if}}
+
+      {{#if diagnostics.tiles.length}}
+        <details class="os-diagnostic-details">
+          <summary>Tile inventory ({{diagnostics.tiles.length}})</summary>
+          <div class="os-diagnostic-table-wrap">
+            <table class="os-diagnostic-table">
+              <thead><tr><th>ID</th><th>Source</th><th>Position</th><th>Size</th><th>Elev/Sort</th><th>Flags</th></tr></thead>
+              <tbody>
+                {{#each diagnostics.tiles}}
+                  <tr>
+                    <td><code>{{id}}</code></td>
+                    <td class="os-diagnostic-source">{{src}}</td>
+                    <td>{{x}}, {{y}}</td>
+                    <td>{{width}}×{{height}}</td>
+                    <td>{{elevation}} / {{sort}}</td>
+                    <td>{{#if legacyMap}}legacy-map {{/if}}{{#if large}}large {{/if}}{{#if green}}green{{/if}}</td>
+                  </tr>
+                {{/each}}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      {{/if}}
+
+      {{#if diagnostics.drawings.length}}
+        <details class="os-diagnostic-details">
+          <summary>Drawing inventory ({{diagnostics.drawings.length}})</summary>
+          <div class="os-diagnostic-table-wrap">
+            <table class="os-diagnostic-table">
+              <thead><tr><th>ID</th><th>Position</th><th>Size</th><th>Fill</th><th>Stroke</th></tr></thead>
+              <tbody>
+                {{#each diagnostics.drawings}}
+                  <tr><td><code>{{id}}</code></td><td>{{x}}, {{y}}</td><td>{{width}}×{{height}}</td><td>{{fill}}</td><td>{{stroke}}</td></tr>
+                {{/each}}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      {{/if}}
+
+      <footer class="os-library-footer">
+        <i class="fa-solid fa-clipboard-check" aria-hidden="true"></i>
+        <span>Use <strong>Copy diagnostic JSON</strong> to give ChatGPT a complete machine-readable snapshot of this scene and the visible browser UI when a problem is present.</span>
+      </footer>
+    {{else}}
+      <section class="os-diagnostic-card">
+        <h3>Ghost Ship not installed</h3>
+        <p>{{diagnostics.message}}</p>
+        <p>The DOM green-surface probe can still run: {{diagnostics.greenArtifactCandidates}} candidate(s) detected.</p>
+      </section>
+    {{/if}}
   {{/if}}
 
   {{#if tabComic}}

@@ -479,6 +479,159 @@
   }
 }
 
+.os-diagnostics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.os-diagnostic-card,
+.os-diagnostic-details {
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border-light-2, #6668);
+  border-radius: 7px;
+  background: rgb(0 0 0 / 16%);
+}
+
+.os-diagnostic-card h3,
+.os-diagnostic-card h4 {
+  margin: 0 0 0.55rem;
+}
+
+.os-diagnostic-kv {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+}
+
+.os-diagnostic-kv > div {
+  display: grid;
+  grid-template-columns: minmax(105px, 0.8fr) minmax(0, 1.2fr);
+  gap: 0.5rem;
+  padding: 0.2rem 0;
+  border-bottom: 1px solid rgb(255 255 255 / 6%);
+}
+
+.os-diagnostic-kv dt { opacity: 0.72; }
+.os-diagnostic-kv dd { margin: 0; font-weight: 650; overflow-wrap: anywhere; }
+.os-diagnostic-kv .is-good { color: #86d795; }
+.os-diagnostic-kv .is-bad { color: var(--color-level-error, #f88); }
+
+.os-diagnostic-path {
+  margin: 0.55rem 0 0;
+  padding: 0.4rem;
+  border-radius: 4px;
+  background: rgb(0 0 0 / 25%);
+  font-family: monospace;
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+
+.os-diagnostic-counts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.os-diagnostic-counts span {
+  padding: 0.35rem 0.45rem;
+  border-radius: 5px;
+  background: rgb(0 0 0 / 20%);
+}
+
+.os-diagnostic-counts strong { margin-right: 0.3rem; }
+
+.os-artifact-probe {
+  border-color: rgb(112 190 124 / 48%);
+}
+
+.os-diagnostic-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.os-diagnostic-badge {
+  flex: 0 0 auto;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid rgb(112 190 124 / 55%);
+  border-radius: 999px;
+  background: rgb(80 150 90 / 16%);
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.os-diagnostic-suspect-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.os-diagnostic-suspect {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-bottom: 0.35rem;
+  padding: 0.45rem;
+  border-radius: 5px;
+  background: rgb(0 0 0 / 22%);
+}
+
+.os-diagnostic-suspect span,
+.os-diagnostic-suspect code,
+.os-diagnostic-empty {
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.os-diagnostic-empty {
+  margin: 0;
+  opacity: 0.72;
+}
+
+.os-diagnostic-warnings ul {
+  margin: 0.35rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.os-diagnostic-details summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.os-diagnostic-table-wrap {
+  margin-top: 0.55rem;
+  overflow: auto;
+}
+
+.os-diagnostic-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.74rem;
+}
+
+.os-diagnostic-table th,
+.os-diagnostic-table td {
+  padding: 0.35rem;
+  border-bottom: 1px solid rgb(255 255 255 / 8%);
+  text-align: left;
+  vertical-align: top;
+}
+
+.os-diagnostic-source {
+  max-width: 240px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 720px) {
+  .os-diagnostics-grid,
+  .os-diagnostic-suspect-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 480px) {
   .os-comic-path-row,
   .os-comic-panel-row {
