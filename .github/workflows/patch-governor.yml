@@ -1,0 +1,329 @@
+name: Phase Patch Governor
+
+on:
+  push:
+    branches:
+      - 'governor-plan/**'
+    paths:
+      - '.governor/projects/**'
+      - 'dev/patch-governor.mjs'
+      - '.github/workflows/patch-governor.yml'
+  workflow_dispatch:
+    inputs:
+      project_dir:
+        description: 'Planning project directory, e.g. .governor/projects/encounter-builder-v1'
+        required: true
+        type: string
+      run_production:
+        description: 'Run production after pre-production validation'
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: patch-governor-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  BASE_BRANCH: main
+
+jobs:
+  preproduction:
+    name: Pre-production governor
+    runs-on: ubuntu-latest
+    outputs:
+      project: ${{ steps.validate.outputs.project }}
+      status: ${{ steps.validate.outputs.status }}
+      complete: ${{ steps.validate.outputs.complete }}
+      next_phase: ${{ steps.validate.outputs.next_phase }}
+      project_dir: ${{ steps.validate.outputs.project_dir }}
+      plan_digest: ${{ steps.validate.outputs.plan_digest }}
+    steps:
+      - name: Check out planning ref
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Self-test governor engine
+        run: npm run governor:test
+
+      - name: Select and validate project
+        id: validate
+        shell: bash
+        env:
+          INPUT_PROJECT_DIR: ${{ inputs.project_dir }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            node dev/patch-governor.mjs validate-project \
+              --project-dir "$INPUT_PROJECT_DIR"
+          else
+            node dev/patch-governor.mjs validate-workspace \
+              --enforce-one-patch-change
+          fi
+
+      - name: Report pre-production gate
+        shell: bash
+        run: |
+          {
+            echo "## Patch Governor — Pre-production"
+            echo
+            echo "- Project: \`${{ steps.validate.outputs.project || 'none' }}\`"
+            echo "- Status: \`${{ steps.validate.outputs.status || 'n/a' }}\`"
+            echo "- Complete patch chain: \`${{ steps.validate.outputs.complete || 'false' }}\`"
+            if [[ -n "${{ steps.validate.outputs.next_phase }}" ]]; then
+              echo "- Next patch to draft: \`${{ steps.validate.outputs.next_phase }}\`"
+            else
+              echo "- Next patch to draft: none"
+            fi
+            echo "- Plan SHA-256: \`${{ steps.validate.outputs.plan_digest || 'n/a' }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  production:
+    name: Production governor
+    needs: preproduction
+    if: >-
+      needs.preproduction.outputs.status == 'ready' &&
+      needs.preproduction.outputs.complete == 'true' &&
+      (github.event_name == 'push' || inputs.run_production == true)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out planning ref
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Snapshot sealed patch chain
+        id: snapshot
+        shell: bash
+        env:
+          PROJECT_DIR: ${{ needs.preproduction.outputs.project_dir }}
+        run: |
+          set -euo pipefail
+          test -n "$PROJECT_DIR"
+          mkdir -p "$RUNNER_TEMP/governor-plan"
+          cp -R "$PROJECT_DIR/." "$RUNNER_TEMP/governor-plan/"
+          node dev/patch-governor.mjs fingerprint --project-dir "$PROJECT_DIR"
+          echo "plan_sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "source_ref=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Reset production branch from main
+        id: branch
+        shell: bash
+        env:
+          PROJECT: ${{ needs.preproduction.outputs.project }}
+        run: |
+          set -euo pipefail
+          RUN_BRANCH="governor-run/${PROJECT}/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          git fetch origin "$BASE_BRANCH"
+          git checkout -B "$RUN_BRANCH" "origin/$BASE_BRANCH"
+          git config user.name "patch-governor[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          echo "run_branch=$RUN_BRANCH" >> "$GITHUB_OUTPUT"
+          echo "base_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Execute deterministic phase chain
+        id: execute
+        shell: bash
+        env:
+          PROJECT: ${{ needs.preproduction.outputs.project }}
+          RUN_BRANCH: ${{ steps.branch.outputs.run_branch }}
+        run: |
+          set -euo pipefail
+          PLAN_DIR="$RUNNER_TEMP/governor-plan"
+          GOVERNOR="$GITHUB_WORKSPACE/dev/patch-governor.mjs"
+          REPORT="$RUNNER_TEMP/governor-report.md"
+          : > "$REPORT"
+          echo "# Governor production report — $PROJECT" >> "$REPORT"
+          echo >> "$REPORT"
+          echo "Plan source: \`${{ steps.snapshot.outputs.source_ref }}@${{ steps.snapshot.outputs.plan_sha }}\`" >> "$REPORT"
+          echo >> "$REPORT"
+
+          mapfile -t PHASES < <(node "$GOVERNOR" list-phases --project-dir "$PLAN_DIR")
+          for PHASE in "${PHASES[@]}"; do
+            echo "### Phase: $PHASE" >> "$GITHUB_STEP_SUMMARY"
+            echo "### Phase: $PHASE" >> "$REPORT"
+            echo >> "$REPORT"
+
+            set +e
+            APPLY_OUTPUT="$(node "$GOVERNOR" apply --project-dir "$PLAN_DIR" --phase "$PHASE" 2>&1)"
+            APPLY_STATUS=$?
+            set -e
+            printf '%s\n' "$APPLY_OUTPUT"
+            if [[ $APPLY_STATUS -ne 0 ]]; then
+              echo "::error title=Governor patch failed::$PHASE failed while applying its patch. $APPLY_OUTPUT"
+              echo "- ❌ Apply failed" >> "$REPORT"
+              echo '```text' >> "$REPORT"
+              printf '%s\n' "$APPLY_OUTPUT" >> "$REPORT"
+              echo '```' >> "$REPORT"
+              cat "$REPORT" >> "$GITHUB_STEP_SUMMARY"
+              exit $APPLY_STATUS
+            fi
+
+            set +e
+            CHECK_OUTPUT="$(node "$GOVERNOR" checks --project-dir "$PLAN_DIR" --phase "$PHASE" 2>&1)"
+            CHECK_STATUS=$?
+            set -e
+            printf '%s\n' "$CHECK_OUTPUT"
+            if [[ $CHECK_STATUS -ne 0 ]]; then
+              echo "::error title=Governor phase checks failed::$PHASE failed validation. $CHECK_OUTPUT"
+              echo "- ✅ Patch applied" >> "$REPORT"
+              echo "- ❌ Phase checks failed" >> "$REPORT"
+              echo '```text' >> "$REPORT"
+              printf '%s\n' "$CHECK_OUTPUT" >> "$REPORT"
+              echo '```' >> "$REPORT"
+              cat "$REPORT" >> "$GITHUB_STEP_SUMMARY"
+              exit $CHECK_STATUS
+            fi
+
+            git add -A
+            if git diff --cached --quiet; then
+              echo "::error title=Governor empty phase::$PHASE produced no repository changes."
+              echo "- ❌ Patch produced no changes" >> "$REPORT"
+              cat "$REPORT" >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
+            git commit -m "Governor: $PROJECT / $PHASE"
+            git push origin "$RUN_BRANCH"
+            echo "- ✅ Applied and validated" >> "$REPORT"
+            echo "- ✅ $PHASE complete" >> "$GITHUB_STEP_SUMMARY"
+            echo >> "$REPORT"
+          done
+
+          echo "report=$REPORT" >> "$GITHUB_OUTPUT"
+
+      - name: Run final project checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          PLAN_DIR="$RUNNER_TEMP/governor-plan"
+          set +e
+          OUTPUT="$(node dev/patch-governor.mjs final-checks --project-dir "$PLAN_DIR" 2>&1)"
+          STATUS=$?
+          set -e
+          printf '%s\n' "$OUTPUT"
+          if [[ $STATUS -ne 0 ]]; then
+            echo "::error title=Governor final validation failed::$OUTPUT"
+            {
+              echo
+              echo "## Final validation"
+              echo "❌ Failed"
+              echo '```text'
+              printf '%s\n' "$OUTPUT"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit $STATUS
+          fi
+          {
+            echo
+            echo "## Final validation"
+            echo "✅ All final checks passed."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Archive immutable plan and run metadata
+        id: archive
+        shell: bash
+        env:
+          PROJECT: ${{ needs.preproduction.outputs.project }}
+          RUN_BRANCH: ${{ steps.branch.outputs.run_branch }}
+        run: |
+          set -euo pipefail
+          PLAN_SHA="${{ steps.snapshot.outputs.plan_sha }}"
+          ARCHIVE_DIR=".governor/history/$PROJECT/$PLAN_SHA"
+          mkdir -p "$ARCHIVE_DIR"
+          cp -R "$RUNNER_TEMP/governor-plan/." "$ARCHIVE_DIR/"
+          if [[ -f "$RUNNER_TEMP/governor-report.md" ]]; then
+            cp "$RUNNER_TEMP/governor-report.md" "$ARCHIVE_DIR/report.md"
+          fi
+          cat > "$ARCHIVE_DIR/run.json" <<JSON
+          {
+            "project": "$PROJECT",
+            "planSourceRef": "${{ steps.snapshot.outputs.source_ref }}",
+            "planSourceCommit": "$PLAN_SHA",
+            "productionBranch": "$RUN_BRANCH",
+            "baseBranch": "$BASE_BRANCH",
+            "workflowRun": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          }
+          JSON
+          git add "$ARCHIVE_DIR"
+          git commit -m "Governor: archive $PROJECT patch chain"
+          git push origin "$RUN_BRANCH"
+          echo "archive_dir=$ARCHIVE_DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Open production pull request
+        id: pr
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROJECT: ${{ needs.preproduction.outputs.project }}
+          RUN_BRANCH: ${{ steps.branch.outputs.run_branch }}
+        run: |
+          set -euo pipefail
+          BODY_FILE="$RUNNER_TEMP/pr-body.md"
+          {
+            echo "Automated production run for governor project **$PROJECT**."
+            echo
+            echo "- Planning ref: \`${{ steps.snapshot.outputs.source_ref }}\`"
+            echo "- Planning commit: \`${{ steps.snapshot.outputs.plan_sha }}\`"
+            echo "- Plan digest: \`${{ needs.preproduction.outputs.plan_digest }}\`"
+            echo "- Workflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo
+            echo "Every phase patch and its checks passed, followed by the project's final checks."
+          } > "$BODY_FILE"
+          PR_URL="$(gh pr create \
+            --base "$BASE_BRANCH" \
+            --head "$RUN_BRANCH" \
+            --title "Governor: $PROJECT" \
+            --body-file "$BODY_FILE")"
+          PR_NUMBER="${PR_URL##*/}"
+          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "url=${{ github.server_url }}/${{ github.repository }}/pull/$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: Report production completion
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        run: |
+          set -euo pipefail
+          {
+            echo
+            echo "## Production complete"
+            echo "✅ Every phase applied and validated."
+            echo "✅ Final checks passed."
+            echo "✅ Production PR: ${{ steps.pr.outputs.url }}"
+            echo "The governor will now merge the validated PR into \`$BASE_BRANCH\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+          gh pr comment "$PR_NUMBER" --body "✅ Patch Governor completed every phase and final check in run ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}. Proceeding to merge."
+
+      - name: Merge validated production PR
+        id: merge
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        run: |
+          set -euo pipefail
+          gh pr merge "$PR_NUMBER" --squash --delete-branch
+          {
+            echo
+            echo "## Governor result"
+            echo "✅ Merged successfully into \`$BASE_BRANCH\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dispatch module release when manifest changed
+        if: success()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ steps.branch.outputs.base_sha }}
+        run: |
+          set -euo pipefail
+          if git diff --name-only "$BASE_SHA" HEAD | grep -qx 'module.json'; then
+            gh workflow run release.yml --ref "$BASE_BRANCH"
+            echo "✅ Dispatched the Foundry module release workflow because module.json changed." >> "$GITHUB_STEP_SUMMARY"
+          fi
