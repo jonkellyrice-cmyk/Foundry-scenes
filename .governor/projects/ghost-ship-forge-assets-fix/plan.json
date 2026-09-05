@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "project": "ghost-ship-forge-assets-fix",
   "title": "Use Forge-aware asset delivery for the Ghost Ship map",
-  "status": "draft",
+  "status": "ready",
   "phases": [
     {
       "order": 1,
@@ -34,7 +34,7 @@
     },
     {
       "name": "Existing managed tile migration",
-      "run": "grep -q 'updateEmbeddedDocuments(\"Tile\"' scripts/orphaned-sun-scenes.mjs && grep -q 'sourceVersion !== GHOST_SHIP_TEMPLATE_VERSION' scripts/orphaned-sun-scenes.mjs"
+      "run": "grep -q 'updateEmbeddedDocuments(\"Tile\"' scripts/orphaned-sun-scenes.mjs && grep -q 'sourceVersion !== \"0.3.3\"' scripts/orphaned-sun-scenes.mjs"
     },
     {
       "name": "Manifest version",
