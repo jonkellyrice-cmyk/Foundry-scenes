@@ -1,0 +1,8 @@
+{
+  "project": "ghost-ship-jpeg-delivery-fix",
+  "planSourceRef": "governor-plan/ghost-ship-jpeg-delivery-fix",
+  "planSourceCommit": "18c9c520e9bc1ba0500c3e26e52bbfef917a4486",
+  "productionBranch": "governor-run/ghost-ship-jpeg-delivery-fix/33940891939-1",
+  "baseBranch": "main",
+  "workflowRun": "https://github.com/jonkellyrice-cmyk/Foundry-scenes/actions/runs/33940891939"
+}

@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "project": "ghost-ship-jpeg-delivery-fix",
+  "title": "Deliver the Ghost Ship map as a browser-safe JPEG",
+  "status": "ready",
+  "phases": [
+    {
+      "order": 1,
+      "id": "jpeg-runtime",
+      "title": "Use the release-generated JPEG and verify actual browser decoding",
+      "patch": "patches/001-jpeg-runtime.patch.json"
+    },
+    {
+      "order": 2,
+      "id": "migrate-existing-map",
+      "title": "Force existing 0.3.3 managed scenes onto the new JPEG asset",
+      "patch": "patches/002-migrate-existing-map.patch.json"
+    },
+    {
+      "order": 3,
+      "id": "release-0-3-4",
+      "title": "Publish the JPEG delivery repair as module 0.3.4",
+      "patch": "patches/003-release-0-3-4.patch.json"
+    }
+  ],
+  "finalChecks": [
+    {
+      "name": "Module JavaScript syntax",
+      "run": "find scripts -name '*.mjs' -print0 | xargs -0 -n1 node --check"
+    },
+    {
+      "name": "JPEG runtime delivery",
+      "run": "grep -q 'signatory-ghost-ship.jpg' scripts/orphaned-sun-scenes.mjs && grep -q 'createImageBitmap' scripts/orphaned-sun-scenes.mjs"
+    },
+    {
+      "name": "Migration uses current template version",
+      "run": "grep -q 'sourceVersion !== GHOST_SHIP_TEMPLATE_VERSION' scripts/orphaned-sun-scenes.mjs"
+    },
+    {
+      "name": "Manifest version and cover",
+      "run": "node -e \"const m=JSON.parse(require('fs').readFileSync('module.json','utf8')); if(m.version!=='0.3.4') throw new Error('expected module 0.3.4'); if(!m.media?.[0]?.url?.endsWith('signatory-ghost-ship.jpg')) throw new Error('expected JPEG cover');\""
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "migrate-existing-map",
+  "phase": "migrate-existing-map",
+  "summary": "Make managed-scene migration compare against the current template version and explicitly recognize stale WebP background or floor-tile references.",
+  "operations": [
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "  const managedFloorTile = floorTiles.find(tile => tile.getFlag?.(MODULE_ID, \"ghostShipMapFloor\")) ?? null;\n  const hasManagedFloorTile = Boolean(managedFloorTile);\n  const needsVersionedMapRepair = sourceVersion !== \"0.3.3\";\n  const needsMapDeliveryRepair = usesBundledBackground || !hasManagedFloorTile || needsVersionedMapRepair;",
+      "after": "  const managedFloorTile = floorTiles.find(tile => tile.getFlag?.(MODULE_ID, \"ghostShipMapFloor\")) ?? null;\n  const hasManagedFloorTile = Boolean(managedFloorTile);\n  const managedFloorSrc = String(managedFloorTile?.texture?.src ?? \"\");\n  const hasLegacyWebpReference = backgroundSrc.includes(\"signatory-ghost-ship.webp\")\n    || managedFloorSrc.includes(\"signatory-ghost-ship.webp\");\n  const needsVersionedMapRepair = sourceVersion !== GHOST_SHIP_TEMPLATE_VERSION;\n  const needsMapDeliveryRepair = usesBundledBackground || !hasManagedFloorTile || needsVersionedMapRepair || hasLegacyWebpReference;",
+      "expectedOccurrences": 1
+    }
+  ],
+  "checks": [
+    {
+      "name": "Ghost Ship script syntax",
+      "run": "node --check scripts/orphaned-sun-scenes.mjs"
+    },
+    {
+      "name": "Current-version migration",
+      "run": "grep -q 'sourceVersion !== GHOST_SHIP_TEMPLATE_VERSION' scripts/orphaned-sun-scenes.mjs"
+    },
+    {
+      "name": "Legacy WebP references force repair",
+      "run": "grep -q 'hasLegacyWebpReference' scripts/orphaned-sun-scenes.mjs && grep -q 'signatory-ghost-ship.webp' scripts/orphaned-sun-scenes.mjs"
+    }
+  ]
+}

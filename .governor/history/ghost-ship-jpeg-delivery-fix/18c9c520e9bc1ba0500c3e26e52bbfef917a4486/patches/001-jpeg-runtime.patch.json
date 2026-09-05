@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "id": "jpeg-runtime",
+  "phase": "jpeg-runtime",
+  "summary": "Switch Ghost Ship runtime map delivery from the browser-rejected WebP to the release-generated JPEG and verify real Chromium decoding before and after Forge upload.",
+  "operations": [
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "const MAP_PATH = `modules/${MODULE_ID}/assets/maps/signatory-ghost-ship.webp`;\nconst MAP_REMOTE_FALLBACK = \"https://raw.githubusercontent.com/jonkellyrice-cmyk/Foundry-scenes/main/assets/maps/signatory-ghost-ship.webp\";\nconst MAP_FILENAME = \"signatory-ghost-ship.webp\";",
+      "after": "const MAP_PATH = `modules/${MODULE_ID}/assets/maps/signatory-ghost-ship.jpg`;\nconst MAP_FILENAME = \"signatory-ghost-ship.jpg\";",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "async function fetchGhostShipMapBlob() {\n  const failures = [];\n  for (const source of [MAP_PATH, MAP_REMOTE_FALLBACK]) {\n    try {\n      const response = await fetch(source, { cache: \"no-store\" });\n      if (!response.ok) throw new Error(`HTTP ${response.status}`);\n      const blob = await response.blob();\n      if (!blob.size) throw new Error(\"empty image response\");\n      return blob;\n    } catch (error) {\n      failures.push(`${source}: ${error?.message ?? error}`);\n    }\n  }\n  throw new Error(`Could not load the bundled Ghost Ship artwork. ${failures.join(\" | \")}`);\n}\n\nasync function verifyGhostShipMapSource(path) {\n  const response = await fetch(path, { cache: \"no-store\" });\n  if (!response.ok) throw new Error(`Ghost Ship uploaded image returned HTTP ${response.status}`);\n  const blob = await response.blob();\n  if (!blob.size) throw new Error(\"Ghost Ship uploaded image was empty.\");\n  if (blob.type && !blob.type.startsWith(\"image/\")) {\n    throw new Error(`Ghost Ship uploaded asset was not an image (${blob.type}).`);\n  }\n  return path;\n}",
+      "after": "async function decodeGhostShipBlob(blob, label) {\n  if (!blob?.size) throw new Error(`${label} was empty.`);\n  if (blob.type && !blob.type.startsWith(\"image/\")) {\n    throw new Error(`${label} was not served as an image (${blob.type}).`);\n  }\n\n  let bitmap;\n  try {\n    bitmap = await createImageBitmap(blob);\n    if (bitmap.width !== 1672 || bitmap.height !== 941) {\n      throw new Error(`unexpected dimensions ${bitmap.width}x${bitmap.height}`);\n    }\n  } catch (error) {\n    throw new Error(`${label} could not be decoded by the browser: ${error?.message ?? error}`);\n  } finally {\n    bitmap?.close?.();\n  }\n}\n\nasync function fetchGhostShipMapBlob() {\n  const response = await fetch(MAP_PATH, { cache: \"no-store\" });\n  if (!response.ok) throw new Error(`Bundled Ghost Ship JPEG returned HTTP ${response.status}`);\n  const blob = await response.blob();\n  await decodeGhostShipBlob(blob, \"Bundled Ghost Ship JPEG\");\n  return blob;\n}\n\nasync function verifyGhostShipMapSource(path) {\n  const response = await fetch(path, { cache: \"no-store\" });\n  if (!response.ok) throw new Error(`Ghost Ship uploaded image returned HTTP ${response.status}`);\n  const blob = await response.blob();\n  await decodeGhostShipBlob(blob, \"Uploaded Ghost Ship image\");\n  return path;\n}",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "const file = new File([blob], MAP_FILENAME, { type: blob.type || \"image/webp\" });",
+      "after": "const file = new File([blob], MAP_FILENAME, { type: \"image/jpeg\" });",
+      "expectedOccurrences": 1
+    }
+  ],
+  "checks": [
+    {
+      "name": "Ghost Ship script syntax",
+      "run": "node --check scripts/orphaned-sun-scenes.mjs"
+    },
+    {
+      "name": "JPEG path and browser decode checks",
+      "run": "grep -q 'signatory-ghost-ship.jpg' scripts/orphaned-sun-scenes.mjs && grep -q 'createImageBitmap' scripts/orphaned-sun-scenes.mjs && ! grep -q 'MAP_REMOTE_FALLBACK' scripts/orphaned-sun-scenes.mjs"
+    },
+    {
+      "name": "JPEG upload MIME",
+      "run": "grep -q 'type: \"image/jpeg\"' scripts/orphaned-sun-scenes.mjs"
+    }
+  ]
+}
