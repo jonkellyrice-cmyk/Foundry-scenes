@@ -2,7 +2,7 @@ const MODULE_ID = "orphaned-sun-scenes";
 const MODULE_VERSION = "0.1.0";
 const GHOST_SHIP_KEY = "signatory-ghost-ship";
 const GHOST_SHIP_NAME = "Signatory Ghost Ship — Derelict Accord Vessel";
-const MAP_PATH = `modules/${MODULE_ID}/assets/maps/signatory-ghost-ship.png`;
+const MAP_PATH = `modules/${MODULE_ID}/assets/maps/signatory-ghost-ship.webp`;
 
 Hooks.once("init", () => {
   game.settings.register(MODULE_ID, "autoCreateGhostShip", {
