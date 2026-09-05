@@ -1,6 +1,6 @@
 # Orphaned Sun — Foundry Scenes
 
-Foundry VTT v13 content module for prebuilt **Orphaned Sun** scenes with bundled artwork, walls, doors, fog-of-war vision, and dynamic lighting.
+Foundry VTT v13 content module for prebuilt **Orphaned Sun** scenes with bundled artwork, walls, doors, fog-of-war vision, dynamic lighting, and a GM-facing Scene Library UI.
 
 ## Install on Foundry / The Forge
 
@@ -8,11 +8,29 @@ Paste this manifest URL into the module installer:
 
 `https://raw.githubusercontent.com/jonkellyrice-cmyk/Foundry-scenes/main/module.json`
 
-Then enable **Orphaned Sun — Foundry Scenes** in the Lancer world. The active GM automatically receives the bundled Signatory Ghost Ship scene the first time the module is enabled.
+Then enable **Orphaned Sun — Foundry Scenes** in the Lancer world.
+
+## Scene Library UI
+
+For GMs, the module adds an **Orphaned Sun Scenes** icon at the bottom of Foundry's left-hand Scene Controls toolbar. Clicking it opens a normal movable Foundry window which can be resized, minimized, restored, and closed.
+
+The Scene Library shows every scene bundled with the module and whether that scene is already present in the current world. From the library you can:
+
+- import a bundled scene into the world;
+- open the world scene;
+- jump directly to the Walls layer;
+- jump directly to the Lighting layer;
+- open normal Foundry Scene Configuration;
+- create an independent Working Copy of the current scene;
+- restore the module-managed scene to the bundled version;
+- remove the module-managed scene from the world without removing Working Copies;
+- enable or disable automatic creation of the initial bundled scene.
+
+Once imported, the scene is an ordinary Foundry Scene. You can freely edit its walls, lights, doors, tokens, sounds, tiles, regions, and scene settings. The module does not silently overwrite those edits.
 
 ## Signatory Ghost Ship
 
-The initial scene includes:
+The initial bundled scene includes:
 
 - the 1672×941 derelict ship battle map;
 - an exterior pressure-hull wall boundary;
@@ -23,11 +41,17 @@ The initial scene includes:
 - intermittent red emergency lights;
 - deliberately dark corridors for horror exploration.
 
-The module never overwrites an existing seeded scene automatically.
+The active GM still receives the Signatory Ghost Ship automatically the first time the module is enabled unless that setting is disabled. This preserves the first-release behavior while future scenes are imported intentionally through the Scene Library.
 
 ### GM console helpers
 
-If you intentionally want to delete and recreate the bundled scene from the module definition:
+Open the Scene Library from the console:
+
+```js
+await game.modules.get("orphaned-sun-scenes").api.openSceneLibrary();
+```
+
+If you intentionally want to delete and recreate the bundled Ghost Ship from the module definition:
 
 ```js
 await game.modules.get("orphaned-sun-scenes").api.rebuildGhostShipScene();
