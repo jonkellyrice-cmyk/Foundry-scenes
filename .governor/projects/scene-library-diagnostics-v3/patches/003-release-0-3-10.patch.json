@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "release-0-3-10",
+  "phase": "release-0-3-10",
+  "summary": "Bump the Foundry module manifest to 0.3.10 so the enhanced persisted canvas diagnostics are published through the existing release workflow.",
+  "operations": [
+    {
+      "op": "json-set",
+      "path": "module.json",
+      "keyPath": ["version"],
+      "expected": "0.3.9",
+      "value": "0.3.10"
+    }
+  ],
+  "checks": [
+    {
+      "name": "Manifest parses and reports 0.3.10",
+      "run": "node -e \"const m=JSON.parse(require('fs').readFileSync('module.json','utf8')); if(m.version!=='0.3.10') throw new Error('manifest version mismatch');\""
+    }
+  ]
+}
