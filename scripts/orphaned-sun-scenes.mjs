@@ -379,19 +379,29 @@ export async function repairGhostShipVisibility(scene = null) {
   const usesBundledBackground = backgroundMissing || backgroundSrc === MAP_PATH;
   const darkness = Number(target.environment?.darknessLevel ?? 0);
   const legacyBlackPreset = usesBundledBackground && darkness >= 0.84;
-  if (!backgroundMissing && !legacyBlackPreset) return target;
+  const floorTiles = Array.from(target.tiles ?? []);
+  const hasManagedFloorTile = floorTiles.some(tile => tile.getFlag?.(MODULE_ID, "ghostShipMapFloor"));
+  const needsMapDeliveryRepair = usesBundledBackground || !hasManagedFloorTile;
+  if (!needsMapDeliveryRepair && !legacyBlackPreset) return target;
+
+  let mapSrc = backgroundSrc;
+  if (needsMapDeliveryRepair) mapSrc = await provisionGhostShipMapAsset();
 
   const update = {
     [`flags.${MODULE_ID}.sourceVersion`]: GHOST_SHIP_TEMPLATE_VERSION
   };
-  if (backgroundMissing) update["background.src"] = MAP_PATH;
+  if (usesBundledBackground && mapSrc) update["background.src"] = mapSrc;
   if (legacyBlackPreset) {
     update["environment.darknessLevel"] = 0.58;
     update["environment.darknessLevelLock"] = false;
   }
 
   await target.update(update);
-  ui.notifications?.info("Orphaned Sun Scenes: repaired Ghost Ship visibility. The map should now be readable while retaining dynamic horror lighting.");
+  if (!hasManagedFloorTile && mapSrc) {
+    await target.createEmbeddedDocuments("Tile", [makeGhostShipMapTile(mapSrc)]);
+  }
+
+  ui.notifications?.info("Orphaned Sun Scenes: repaired Ghost Ship map delivery without changing walls, doors, lights, or tokens.");
   return target;
 }
 
