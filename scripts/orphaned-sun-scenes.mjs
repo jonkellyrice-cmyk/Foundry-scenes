@@ -291,31 +291,44 @@ async function fetchGhostShipMapBlob() {
   throw new Error(`Could not load the bundled Ghost Ship artwork. ${failures.join(" | ")}`);
 }
 
+async function verifyGhostShipMapSource(path) {
+  const response = await fetch(path, { cache: "no-store" });
+  if (!response.ok) throw new Error(`Ghost Ship uploaded image returned HTTP ${response.status}`);
+  const blob = await response.blob();
+  if (!blob.size) throw new Error("Ghost Ship uploaded image was empty.");
+  if (blob.type && !blob.type.startsWith("image/")) {
+    throw new Error(`Ghost Ship uploaded asset was not an image (${blob.type}).`);
+  }
+  return path;
+}
+
 async function provisionGhostShipMapAsset() {
-  const FilePicker = foundry.applications.apps.FilePicker?.implementation ?? globalThis.FilePicker;
+  const forgeActive = typeof globalThis.ForgeVTT !== "undefined" && Boolean(globalThis.ForgeVTT?.usingTheForge);
+  const FilePicker = globalThis.FilePicker ?? foundry.applications.apps.FilePicker?.implementation;
   const worldId = game.world?.id;
   if (!FilePicker || !worldId) throw new Error("Foundry FilePicker or world ID is unavailable.");
 
-  const directories = [
-    `worlds/${worldId}/orphaned-sun-scenes`,
-    `worlds/${worldId}/orphaned-sun-scenes/maps`
-  ];
-  for (const directory of directories) {
-    try {
-      await FilePicker.createDirectory("data", directory, {});
-    } catch (error) {
-      if (!/exists/i.test(String(error?.message ?? error))) {
-        console.warn(`${MODULE_ID} | Could not create ${directory}`, error);
-      }
+  const source = forgeActive ? "forgevtt" : "data";
+  const directory = forgeActive
+    ? `${MODULE_ID}/maps`
+    : `worlds/${worldId}/${MODULE_ID}/maps`;
+
+  try {
+    await FilePicker.createDirectory(source, directory, {});
+  } catch (error) {
+    if (!/exists/i.test(String(error?.message ?? error))) {
+      console.warn(`${MODULE_ID} | Could not create ${source}:${directory}`, error);
     }
   }
 
   const blob = await fetchGhostShipMapBlob();
   const file = new File([blob], MAP_FILENAME, { type: blob.type || "image/webp" });
-  const directory = directories.at(-1);
-  const response = await FilePicker.upload("data", directory, file, {}, { notify: false });
-  const path = typeof response?.path === "string" && response.path ? response.path : `${directory}/${MAP_FILENAME}`;
-  console.info(`${MODULE_ID} | Provisioned Ghost Ship artwork at ${path}`);
+  const response = await FilePicker.upload(source, directory, file, {}, { notify: false });
+  const path = typeof response?.path === "string" ? response.path.trim() : "";
+  if (!path) throw new Error(`Ghost Ship upload to ${source}:${directory} returned no usable asset path.`);
+
+  await verifyGhostShipMapSource(path);
+  console.info(`${MODULE_ID} | Provisioned and verified Ghost Ship artwork at ${path}`);
   return path;
 }
 
