@@ -28,6 +28,7 @@ Hooks.once("ready", async () => {
     module.api = {
       ensureGhostShipScene,
       rebuildGhostShipScene,
+      repairGhostShipVisibility,
       getGhostShipSceneData
     };
   }
@@ -35,6 +36,13 @@ Hooks.once("ready", async () => {
   if (!game.user?.isGM) return;
   const activeGM = game.users?.activeGM;
   if (activeGM && activeGM.id !== game.user.id) return;
+  try {
+    await repairGhostShipVisibility();
+  } catch (error) {
+    console.error(`${MODULE_ID} | Failed to repair Ghost Ship visibility`, error);
+    ui.notifications?.warn("Orphaned Sun Scenes: the Ghost Ship visibility repair could not be applied automatically.");
+  }
+
   if (!game.settings.get(MODULE_ID, "autoCreateGhostShip")) return;
 
   try {
@@ -291,15 +299,43 @@ export function getGhostShipSceneData() {
   };
 }
 
+export async function repairGhostShipVisibility(scene = null) {
+  if (!game.user?.isGM) throw new Error("Only a GM can repair bundled scenes.");
+  const target = scene ?? game.scenes.find(candidate => candidate.getFlag(MODULE_ID, "sceneKey") === GHOST_SHIP_KEY) ?? null;
+  if (!target) return null;
+
+  const backgroundSrc = String(target.background?.src ?? "");
+  const backgroundMissing = !backgroundSrc;
+  const usesBundledBackground = backgroundMissing || backgroundSrc === MAP_PATH;
+  const darkness = Number(target.environment?.darknessLevel ?? 0);
+  const legacyBlackPreset = usesBundledBackground && darkness >= 0.84;
+  if (!backgroundMissing && !legacyBlackPreset) return target;
+
+  const update = {
+    [`flags.${MODULE_ID}.sourceVersion`]: GHOST_SHIP_TEMPLATE_VERSION
+  };
+  if (backgroundMissing) update["background.src"] = MAP_PATH;
+  if (legacyBlackPreset) {
+    update["environment.darknessLevel"] = 0.58;
+    update["environment.darknessLevelLock"] = false;
+  }
+
+  await target.update(update);
+  ui.notifications?.info("Orphaned Sun Scenes: repaired Ghost Ship visibility. The map should now be readable while retaining dynamic horror lighting.");
+  return target;
+}
+
 export async function ensureGhostShipScene() {
   const existing = game.scenes.find(scene => scene.getFlag(MODULE_ID, "sceneKey") === GHOST_SHIP_KEY);
   if (existing) {
     const sourceVersion = existing.getFlag(MODULE_ID, "sourceVersion");
     const hasNoWalls = (existing.walls?.size ?? 0) === 0;
-    if (sourceVersion !== "0.1.0" || !hasNoWalls) return existing;
-
-    await existing.delete();
-    ui.notifications?.warn("Orphaned Sun Scenes: repairing the legacy Ghost Ship scene created without valid walls.");
+    if (sourceVersion === "0.1.0" && hasNoWalls) {
+      await existing.delete();
+      ui.notifications?.warn("Orphaned Sun Scenes: repairing the legacy Ghost Ship scene created without valid walls.");
+    } else {
+      return repairGhostShipVisibility(existing);
+    }
   }
 
   const scene = await Scene.create(getGhostShipSceneData());
