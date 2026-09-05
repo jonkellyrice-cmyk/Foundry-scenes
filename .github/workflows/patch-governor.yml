@@ -22,7 +22,6 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
 
 concurrency:
   group: patch-governor-${{ github.ref }}
@@ -254,65 +253,34 @@ jobs:
           git push origin "$RUN_BRANCH"
           echo "archive_dir=$ARCHIVE_DIR" >> "$GITHUB_OUTPUT"
 
-      - name: Open production pull request
-        id: pr
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PROJECT: ${{ needs.preproduction.outputs.project }}
-          RUN_BRANCH: ${{ steps.branch.outputs.run_branch }}
-        run: |
-          set -euo pipefail
-          BODY_FILE="$RUNNER_TEMP/pr-body.md"
-          {
-            echo "Automated production run for governor project **$PROJECT**."
-            echo
-            echo "- Planning ref: \`${{ steps.snapshot.outputs.source_ref }}\`"
-            echo "- Planning commit: \`${{ steps.snapshot.outputs.plan_sha }}\`"
-            echo "- Plan digest: \`${{ needs.preproduction.outputs.plan_digest }}\`"
-            echo "- Workflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            echo
-            echo "Every phase patch and its checks passed, followed by the project's final checks."
-          } > "$BODY_FILE"
-          PR_URL="$(gh pr create \
-            --base "$BASE_BRANCH" \
-            --head "$RUN_BRANCH" \
-            --title "Governor: $PROJECT" \
-            --body-file "$BODY_FILE")"
-          PR_NUMBER="${PR_URL##*/}"
-          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
-          echo "url=${{ github.server_url }}/${{ github.repository }}/pull/$PR_NUMBER" >> "$GITHUB_OUTPUT"
-
-      - name: Report production completion
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ steps.pr.outputs.number }}
-        run: |
-          set -euo pipefail
-          {
-            echo
-            echo "## Production complete"
-            echo "✅ Every phase applied and validated."
-            echo "✅ Final checks passed."
-            echo "✅ Production PR: ${{ steps.pr.outputs.url }}"
-            echo "The governor will now merge the validated PR into \`$BASE_BRANCH\`."
-          } >> "$GITHUB_STEP_SUMMARY"
-          gh pr comment "$PR_NUMBER" --body "✅ Patch Governor completed every phase and final check in run ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}. Proceeding to merge."
-
-      - name: Merge validated production PR
+      - name: Merge validated production branch into main
         id: merge
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          RUN_BRANCH: ${{ steps.branch.outputs.run_branch }}
+          BASE_SHA: ${{ steps.branch.outputs.base_sha }}
         run: |
           set -euo pipefail
-          gh pr merge "$PR_NUMBER" --squash --delete-branch
+          git fetch origin "$BASE_BRANCH"
+          CURRENT_BASE="$(git rev-parse "origin/$BASE_BRANCH")"
+          if [[ "$CURRENT_BASE" != "$BASE_SHA" ]]; then
+            echo "::error title=Governor base branch moved::$BASE_BRANCH changed from $BASE_SHA to $CURRENT_BASE while production was running. No merge was attempted. Rerun the governor from the updated base."
+            {
+              echo
+              echo "## Governor result"
+              echo "❌ Merge blocked because \`$BASE_BRANCH\` changed during the production run."
+              echo "Rerun production so the deterministic chain starts from the new base commit."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          git push origin HEAD:"$BASE_BRANCH"
+          git push origin --delete "$RUN_BRANCH" || true
           {
             echo
             echo "## Governor result"
-            echo "✅ Merged successfully into \`$BASE_BRANCH\`."
+            echo "✅ Every phase and final check passed."
+            echo "✅ Fast-forward merged the validated production chain into \`$BASE_BRANCH\`."
+            echo "✅ Removed temporary production branch \`$RUN_BRANCH\`."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Dispatch module release when manifest changed
