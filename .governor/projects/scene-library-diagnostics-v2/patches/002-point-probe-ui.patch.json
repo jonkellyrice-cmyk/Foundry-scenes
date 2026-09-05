@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "id": "point-probe-ui",
+  "phase": "point-probe-ui",
+  "summary": "Add a one-click artifact point picker to the diagnostics tab and render the captured DOM stack, pseudo-element styles, and matching visual CSS rules in the GM Tools UI.",
+  "operations": [
+    {
+      "op": "replace",
+      "path": "scripts/scene-library.mjs",
+      "before": "import { collectSceneDiagnostics, diagnosticsClipboardText } from \"./scene-diagnostics.mjs\";",
+      "after": "import { collectSceneDiagnostics, collectDomPointProbe, diagnosticsClipboardText } from \"./scene-diagnostics.mjs\";",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/scene-library.mjs",
+      "before": "    this.activeTab = \"scenes\";\n    this.comicDraft = loadComicDraft();",
+      "after": "    this.activeTab = \"scenes\";\n    this.comicDraft = loadComicDraft();\n    this.diagnosticPointProbe = null;\n    this._diagnosticPickCleanup = null;",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/scene-library.mjs",
+      "before": "      diagnosticsRefresh: OrphanedSunSceneLibrary.diagnosticsRefresh,\n      diagnosticsCopy: OrphanedSunSceneLibrary.diagnosticsCopy,",
+      "after": "      diagnosticsRefresh: OrphanedSunSceneLibrary.diagnosticsRefresh,\n      diagnosticsPickPoint: OrphanedSunSceneLibrary.diagnosticsPickPoint,\n      diagnosticsCopy: OrphanedSunSceneLibrary.diagnosticsCopy,",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/scene-library.mjs",
+      "before": "    const diagnostics = this.activeTab === \"diagnostics\"\n      ? await collectSceneDiagnostics(findManagedScene(GHOST_SHIP_KEY))\n      : null;",
+      "after": "    const diagnostics = this.activeTab === \"diagnostics\"\n      ? await collectSceneDiagnostics(findManagedScene(GHOST_SHIP_KEY), { pointProbe: this.diagnosticPointProbe })\n      : null;",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/scene-library.mjs",
+      "before": "  static async diagnosticsCopy() {\n",
+      "after": "  static async diagnosticsPickPoint() {\n    this.activeTab = \"diagnostics\";\n    this._diagnosticPickCleanup?.();\n\n    const body = document.body;\n    body?.classList.add(\"os-diagnostic-pick-mode\");\n    ui.notifications?.info(\"Artifact picker armed. Click directly on the green strip; press Escape to cancel.\");\n\n    let active = true;\n    const cleanup = () => {\n      if (!active) return;\n      active = false;\n      body?.classList.remove(\"os-diagnostic-pick-mode\");\n      document.removeEventListener(\"pointerdown\", handlePoint, true);\n      document.removeEventListener(\"keydown\", handleKey, true);\n      this._diagnosticPickCleanup = null;\n    };\n\n    const handlePoint = async event => {\n      if (this.element?.contains(event.target)) return;\n      event.preventDefault();\n      event.stopImmediatePropagation();\n      cleanup();\n      this.diagnosticPointProbe = collectDomPointProbe(event.clientX, event.clientY);\n      ui.notifications?.info(`Captured artifact point at x${this.diagnosticPointProbe.x}, y${this.diagnosticPointProbe.y}.`);\n      await this.render({ force: true });\n    };\n\n    const handleKey = event => {\n      if (event.key !== \"Escape\") return;\n      cleanup();\n      ui.notifications?.info(\"Artifact picker cancelled.\");\n    };\n\n    this._diagnosticPickCleanup = cleanup;\n    setTimeout(() => {\n      if (!active) return;\n      document.addEventListener(\"pointerdown\", handlePoint, true);\n      document.addEventListener(\"keydown\", handleKey, true);\n    }, 0);\n  }\n\n  static async diagnosticsCopy() {\n",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/scene-library.mjs",
+      "before": "      const diagnostics = await collectSceneDiagnostics(findManagedScene(GHOST_SHIP_KEY));",
+      "after": "      const diagnostics = await collectSceneDiagnostics(findManagedScene(GHOST_SHIP_KEY), { pointProbe: this.diagnosticPointProbe });",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "templates/scene-library.hbs",
+      "before": "      <button type=\"button\" data-action=\"diagnosticsRefresh\">\n        <i class=\"fa-solid fa-arrows-rotate\" aria-hidden=\"true\"></i> Refresh telemetry\n      </button>\n      <button type=\"button\" data-action=\"diagnosticsCopy\">",
+      "after": "      <button type=\"button\" data-action=\"diagnosticsRefresh\">\n        <i class=\"fa-solid fa-arrows-rotate\" aria-hidden=\"true\"></i> Refresh telemetry\n      </button>\n      <button type=\"button\" data-action=\"diagnosticsPickPoint\">\n        <i class=\"fa-solid fa-crosshairs\" aria-hidden=\"true\"></i> Pick artifact point\n      </button>\n      <button type=\"button\" data-action=\"diagnosticsCopy\">",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "templates/scene-library.hbs",
+      "before": "      {{#if diagnostics.hasWarnings}}\n        <section class=\"os-diagnostic-card os-diagnostic-warnings\">",
+      "after": "      {{#if diagnostics.pointProbe}}\n        <section class=\"os-diagnostic-card os-point-probe\">\n          <div class=\"os-diagnostic-heading\">\n            <div>\n              <p class=\"os-library-kicker\">DIRECT SCREEN-POINT TELEMETRY</p>\n              <h3><i class=\"fa-solid fa-crosshairs\"></i> Picked artifact point</h3>\n            </div>\n            <span class=\"os-diagnostic-badge\">x{{diagnostics.pointProbe.x}} · y{{diagnostics.pointProbe.y}}</span>\n          </div>\n          <p>{{diagnostics.pointProbe.status}}. The stack is ordered from the topmost browser element downward. Matching visual CSS rules are included where the browser exposes their stylesheet.</p>\n\n          <div class=\"os-point-stack\">\n            {{#each diagnostics.pointProbe.stack}}\n              <article class=\"os-point-stack-entry {{#if green}}is-green{{/if}}\">\n                <div class=\"os-point-stack-title\">\n                  <strong>#{{rank}} &lt;{{tag}}&gt; {{#if id}}#{{id}}{{/if}} {{classes}}</strong>\n                  {{#if green}}<span class=\"os-diagnostic-badge\">green signal</span>{{/if}}\n                </div>\n                <code>x{{x}} y{{y}} · {{width}}×{{height}} · {{position}} · z {{zIndex}}</code>\n                <dl class=\"os-diagnostic-kv os-point-style-kv\">\n                  <div><dt>Background</dt><dd>{{background}}</dd></div>\n                  <div><dt>BG image</dt><dd>{{backgroundImage}}</dd></div>\n                  <div><dt>Box shadow</dt><dd>{{boxShadow}}</dd></div>\n                  <div><dt>Opacity / filter</dt><dd>{{opacity}} / {{filter}}</dd></div>\n                  <div><dt>Blend / isolation</dt><dd>{{mixBlendMode}} / {{isolation}}</dd></div>\n                  <div><dt>--system-color</dt><dd>{{systemColor}}</dd></div>\n                  <div><dt>::before</dt><dd>{{before.background}} · {{before.backgroundImage}}</dd></div>\n                  <div><dt>::after</dt><dd>{{after.background}} · {{after.backgroundImage}}</dd></div>\n                </dl>\n                {{#if visualRules.length}}\n                  <details class=\"os-point-css-rules\">\n                    <summary>Matching visual CSS rules ({{visualRules.length}})</summary>\n                    {{#each visualRules}}\n                      <div class=\"os-point-css-rule\">\n                        <strong>{{selector}}</strong>\n                        <span>{{source}}</span>\n                        <code>{{css}}</code>\n                      </div>\n                    {{/each}}\n                  </details>\n                {{/if}}\n              </article>\n            {{/each}}\n          </div>\n        </section>\n      {{/if}}\n\n      {{#if diagnostics.hasWarnings}}\n        <section class=\"os-diagnostic-card os-diagnostic-warnings\">",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "styles/scene-library.css",
+      "before": ".os-diagnostic-source {\n  max-width: 240px;\n  overflow-wrap: anywhere;\n}\n\n@media (max-width: 720px) {",
+      "after": ".os-diagnostic-source {\n  max-width: 240px;\n  overflow-wrap: anywhere;\n}\n\nbody.os-diagnostic-pick-mode,\nbody.os-diagnostic-pick-mode * {\n  cursor: crosshair !important;\n}\n\n.os-point-probe {\n  border-color: rgb(200 165 75 / 58%);\n}\n\n.os-point-stack {\n  display: flex;\n  flex-direction: column;\n  gap: 0.5rem;\n}\n\n.os-point-stack-entry {\n  padding: 0.55rem;\n  border: 1px solid rgb(255 255 255 / 9%);\n  border-radius: 6px;\n  background: rgb(0 0 0 / 22%);\n}\n\n.os-point-stack-entry.is-green {\n  border-color: rgb(112 190 124 / 58%);\n  background: rgb(70 130 75 / 12%);\n}\n\n.os-point-stack-title {\n  display: flex;\n  justify-content: space-between;\n  gap: 0.5rem;\n  align-items: flex-start;\n  margin-bottom: 0.35rem;\n}\n\n.os-point-stack-entry > code,\n.os-point-css-rule code,\n.os-point-css-rule span {\n  display: block;\n  overflow-wrap: anywhere;\n  font-size: 0.72rem;\n}\n\n.os-point-style-kv {\n  margin-top: 0.45rem;\n}\n\n.os-point-css-rules {\n  margin-top: 0.45rem;\n}\n\n.os-point-css-rule {\n  margin-top: 0.35rem;\n  padding: 0.4rem;\n  border-radius: 4px;\n  background: rgb(0 0 0 / 24%);\n}\n\n.os-point-css-rule strong {\n  display: block;\n  overflow-wrap: anywhere;\n}\n\n@media (max-width: 720px) {",
+      "expectedOccurrences": 1
+    }
+  ],
+  "checks": [
+    {
+      "name": "Scene library syntax",
+      "run": "node --check scripts/scene-library.mjs"
+    },
+    {
+      "name": "Point picker action wired",
+      "run": "grep -q 'diagnosticsPickPoint' scripts/scene-library.mjs && grep -q 'Pick artifact point' templates/scene-library.hbs"
+    },
+    {
+      "name": "Point stack UI present",
+      "run": "grep -q 'Picked artifact point' templates/scene-library.hbs && grep -q 'os-point-stack-entry' styles/scene-library.css"
+    },
+    {
+      "name": "Point probe passed into clipboard telemetry",
+      "run": "grep -q 'pointProbe: this.diagnosticPointProbe' scripts/scene-library.mjs"
+    }
+  ]
+}
