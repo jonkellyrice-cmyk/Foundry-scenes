@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "project": "scene-library-diagnostics-v2",
   "title": "Scene Library diagnostics point picker and viewport-accurate green artifact telemetry",
-  "status": "draft",
+  "status": "ready",
   "phases": [
     {
       "order": 1,
