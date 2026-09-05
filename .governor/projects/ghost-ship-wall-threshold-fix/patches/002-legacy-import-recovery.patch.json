@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "legacy-import-recovery",
+  "phase": "legacy-import-recovery",
+  "summary": "If the known-broken 0.1.0 managed Ghost Ship exists but contains no walls, remove that unusable copy and recreate it from the repaired bundled template. Preserve any legacy scene that already has walls.",
+  "operations": [
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "export async function ensureGhostShipScene() {\n  const existing = game.scenes.find(scene => scene.getFlag(MODULE_ID, \"sceneKey\") === GHOST_SHIP_KEY);\n  if (existing) return existing;\n\n  const scene = await Scene.create(getGhostShipSceneData());",
+      "after": "export async function ensureGhostShipScene() {\n  const existing = game.scenes.find(scene => scene.getFlag(MODULE_ID, \"sceneKey\") === GHOST_SHIP_KEY);\n  if (existing) {\n    const sourceVersion = existing.getFlag(MODULE_ID, \"sourceVersion\");\n    const hasNoWalls = (existing.walls?.size ?? 0) === 0;\n    if (sourceVersion !== \"0.1.0\" || !hasNoWalls) return existing;\n\n    await existing.delete();\n    ui.notifications?.warn(\"Orphaned Sun Scenes: repairing the legacy Ghost Ship scene created without valid walls.\");\n  }\n\n  const scene = await Scene.create(getGhostShipSceneData());",
+      "expectedOccurrences": 1
+    }
+  ],
+  "checks": [
+    {
+      "name": "Ghost Ship script syntax",
+      "run": "node --check scripts/orphaned-sun-scenes.mjs"
+    },
+    {
+      "name": "Legacy recovery is narrowly scoped to empty 0.1.0 scenes",
+      "run": "node -e \"const s=require('fs').readFileSync('scripts/orphaned-sun-scenes.mjs','utf8'); for(const x of ['const hasNoWalls = (existing.walls?.size ?? 0) === 0;','sourceVersion !== \\\"0.1.0\\\" || !hasNoWalls','await existing.delete();']) if(!s.includes(x)) throw new Error('missing guarded legacy recovery: '+x);\""
+    }
+  ]
+}
