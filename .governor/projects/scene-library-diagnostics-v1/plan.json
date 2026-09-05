@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "project": "scene-library-diagnostics-v1",
+  "title": "Scene Library Diagnostics tab and runtime telemetry",
+  "status": "draft",
+  "phases": [
+    {
+      "order": 1,
+      "id": "diagnostic-telemetry-engine",
+      "title": "Add read-only scene diagnostics and green-artifact suspect telemetry",
+      "patch": "patches/001-diagnostic-telemetry-engine.patch.json"
+    },
+    {
+      "order": 2,
+      "id": "diagnostics-tab-ui",
+      "title": "Add the Scene Library Diagnostics tab, controls, telemetry presentation, and styling",
+      "patch": "patches/002-diagnostics-tab-ui.patch.json"
+    },
+    {
+      "order": 3,
+      "id": "release-0-3-8",
+      "title": "Publish diagnostics tooling as module 0.3.8",
+      "patch": "patches/003-release-0-3-8.patch.json"
+    }
+  ],
+  "finalChecks": [
+    {
+      "name": "Module JavaScript syntax",
+      "run": "find scripts -name '*.mjs' -print0 | xargs -0 -n1 node --check"
+    },
+    {
+      "name": "Diagnostics tab wired",
+      "run": "grep -q 'showDiagnostics' scripts/scene-library.mjs && grep -q 'Scene Library Diagnostics' templates/scene-library.hbs"
+    },
+    {
+      "name": "Green artifact probe telemetry present",
+      "run": "grep -q 'greenArtifactCandidates' scripts/scene-library.mjs && grep -q 'Green artifact probe' templates/scene-library.hbs"
+    },
+    {
+      "name": "Manifest version",
+      "run": "node -e \"const m=JSON.parse(require('fs').readFileSync('module.json','utf8')); if(m.version!=='0.3.8') throw new Error('expected module 0.3.8');\""
+    }
+  ]
+}
