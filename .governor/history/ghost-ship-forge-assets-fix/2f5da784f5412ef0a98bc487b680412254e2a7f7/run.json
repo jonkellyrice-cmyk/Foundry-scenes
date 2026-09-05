@@ -1,0 +1,8 @@
+{
+  "project": "ghost-ship-forge-assets-fix",
+  "planSourceRef": "governor-plan/ghost-ship-forge-assets-fix",
+  "planSourceCommit": "2f5da784f5412ef0a98bc487b680412254e2a7f7",
+  "productionBranch": "governor-run/ghost-ship-forge-assets-fix/33940398618-1",
+  "baseBranch": "main",
+  "workflowRun": "https://github.com/jonkellyrice-cmyk/Foundry-scenes/actions/runs/33940398618"
+}

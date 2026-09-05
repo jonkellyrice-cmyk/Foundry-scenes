@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "repair-existing-scene",
+  "phase": "repair-existing-scene",
+  "summary": "Force 0.3.2-and-earlier managed Ghost Ship scenes through the corrected Forge asset path and update an existing managed floor tile instead of leaving its broken texture reference in place.",
+  "operations": [
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "  const backgroundSrc = String(target.background?.src ?? \"\");\n  const backgroundMissing = !backgroundSrc;\n  const usesBundledBackground = backgroundMissing || backgroundSrc === MAP_PATH;\n  const darkness = Number(target.environment?.darknessLevel ?? 0);\n  const legacyBlackPreset = usesBundledBackground && darkness >= 0.84;\n  const floorTiles = Array.from(target.tiles ?? []);\n  const hasManagedFloorTile = floorTiles.some(tile => tile.getFlag?.(MODULE_ID, \"ghostShipMapFloor\"));\n  const needsMapDeliveryRepair = usesBundledBackground || !hasManagedFloorTile;\n  if (!needsMapDeliveryRepair && !legacyBlackPreset) return target;\n\n  let mapSrc = backgroundSrc;\n  if (needsMapDeliveryRepair) mapSrc = await provisionGhostShipMapAsset();\n\n  const update = {\n    [`flags.${MODULE_ID}.sourceVersion`]: GHOST_SHIP_TEMPLATE_VERSION\n  };\n  if (usesBundledBackground && mapSrc) update[\"background.src\"] = mapSrc;\n  if (legacyBlackPreset) {\n    update[\"environment.darknessLevel\"] = 0.58;\n    update[\"environment.darknessLevelLock\"] = false;\n  }\n\n  await target.update(update);\n  if (!hasManagedFloorTile && mapSrc) {\n    await target.createEmbeddedDocuments(\"Tile\", [makeGhostShipMapTile(mapSrc)]);\n  }\n",
+      "after": "  const backgroundSrc = String(target.background?.src ?? \"\");\n  const backgroundMissing = !backgroundSrc;\n  const usesBundledBackground = backgroundMissing || backgroundSrc === MAP_PATH;\n  const sourceVersion = String(target.getFlag(MODULE_ID, \"sourceVersion\") ?? \"\");\n  const darkness = Number(target.environment?.darknessLevel ?? 0);\n  const legacyBlackPreset = darkness >= 0.84;\n  const floorTiles = Array.from(target.tiles ?? []);\n  const managedFloorTile = floorTiles.find(tile => tile.getFlag?.(MODULE_ID, \"ghostShipMapFloor\")) ?? null;\n  const hasManagedFloorTile = Boolean(managedFloorTile);\n  const needsVersionedMapRepair = sourceVersion !== \"0.3.3\";\n  const needsMapDeliveryRepair = usesBundledBackground || !hasManagedFloorTile || needsVersionedMapRepair;\n  if (!needsMapDeliveryRepair && !legacyBlackPreset) return target;\n\n  let mapSrc = backgroundSrc;\n  if (needsMapDeliveryRepair) mapSrc = await provisionGhostShipMapAsset();\n\n  const update = {\n    [`flags.${MODULE_ID}.sourceVersion`]: GHOST_SHIP_TEMPLATE_VERSION\n  };\n  if (mapSrc) update[\"background.src\"] = mapSrc;\n  if (legacyBlackPreset) {\n    update[\"environment.darknessLevel\"] = 0.58;\n    update[\"environment.darknessLevelLock\"] = false;\n  }\n\n  await target.update(update);\n  if (managedFloorTile && mapSrc) {\n    await target.updateEmbeddedDocuments(\"Tile\", [{\n      _id: managedFloorTile.id,\n      \"texture.src\": mapSrc,\n      [`flags.${MODULE_ID}.sourceVersion`]: GHOST_SHIP_TEMPLATE_VERSION\n    }]);\n  } else if (mapSrc) {\n    await target.createEmbeddedDocuments(\"Tile\", [makeGhostShipMapTile(mapSrc)]);\n  }\n",
+      "expectedOccurrences": 1
+    }
+  ],
+  "checks": [
+    {
+      "name": "Ghost Ship script syntax",
+      "run": "node --check scripts/orphaned-sun-scenes.mjs"
+    },
+    {
+      "name": "Existing 0.3.2 map references will be repaired",
+      "run": "grep -q 'sourceVersion !== \"0.3.3\"' scripts/orphaned-sun-scenes.mjs && grep -q 'updateEmbeddedDocuments(\"Tile\"' scripts/orphaned-sun-scenes.mjs && grep -q '\"texture.src\": mapSrc' scripts/orphaned-sun-scenes.mjs"
+    }
+  ]
+}

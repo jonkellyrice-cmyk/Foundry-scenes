@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "project": "ghost-ship-forge-assets-fix",
+  "title": "Use Forge-aware asset delivery for the Ghost Ship map",
+  "status": "ready",
+  "phases": [
+    {
+      "order": 1,
+      "id": "forge-aware-upload",
+      "title": "Use the Forge Assets Library source and verify the uploaded image path",
+      "patch": "patches/001-forge-aware-upload.patch.json"
+    },
+    {
+      "order": 2,
+      "id": "repair-existing-scene",
+      "title": "Force-repair existing 0.3.2 Ghost Ship map references and the managed floor tile",
+      "patch": "patches/002-repair-existing-scene.patch.json"
+    },
+    {
+      "order": 3,
+      "id": "release-0-3-3",
+      "title": "Publish the Forge asset repair as module 0.3.3",
+      "patch": "patches/003-release-0-3-3.patch.json"
+    }
+  ],
+  "finalChecks": [
+    {
+      "name": "Module JavaScript syntax",
+      "run": "find scripts -name '*.mjs' -print0 | xargs -0 -n1 node --check"
+    },
+    {
+      "name": "Forge-aware upload path",
+      "run": "grep -q 'ForgeVTT' scripts/orphaned-sun-scenes.mjs && grep -q '\"forgevtt\"' scripts/orphaned-sun-scenes.mjs && grep -q 'verifyGhostShipMapSource' scripts/orphaned-sun-scenes.mjs"
+    },
+    {
+      "name": "Existing managed tile migration",
+      "run": "grep -q 'updateEmbeddedDocuments(\"Tile\"' scripts/orphaned-sun-scenes.mjs && grep -q 'sourceVersion !== \"0.3.3\"' scripts/orphaned-sun-scenes.mjs"
+    },
+    {
+      "name": "Manifest version",
+      "run": "node -e \"const m=JSON.parse(require('fs').readFileSync('module.json','utf8')); if(m.version!=='0.3.3') throw new Error('expected module 0.3.3');\""
+    }
+  ]
+}

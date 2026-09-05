@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "forge-aware-upload",
+  "phase": "forge-aware-upload",
+  "summary": "Use Forge's documented forgevtt FilePicker source when hosted on The Forge, prefer the Forge-patched global FilePicker, require the upload response path, and verify the uploaded image before assigning it to a Scene.",
+  "operations": [
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "async function provisionGhostShipMapAsset() {\n  const FilePicker = foundry.applications.apps.FilePicker?.implementation ?? globalThis.FilePicker;\n  const worldId = game.world?.id;\n  if (!FilePicker || !worldId) throw new Error(\"Foundry FilePicker or world ID is unavailable.\");\n\n  const directories = [\n    `worlds/${worldId}/orphaned-sun-scenes`,\n    `worlds/${worldId}/orphaned-sun-scenes/maps`\n  ];\n  for (const directory of directories) {\n    try {\n      await FilePicker.createDirectory(\"data\", directory, {});\n    } catch (error) {\n      if (!/exists/i.test(String(error?.message ?? error))) {\n        console.warn(`${MODULE_ID} | Could not create ${directory}`, error);\n      }\n    }\n  }\n\n  const blob = await fetchGhostShipMapBlob();\n  const file = new File([blob], MAP_FILENAME, { type: blob.type || \"image/webp\" });\n  const directory = directories.at(-1);\n  const response = await FilePicker.upload(\"data\", directory, file, {}, { notify: false });\n  const path = typeof response?.path === \"string\" && response.path ? response.path : `${directory}/${MAP_FILENAME}`;\n  console.info(`${MODULE_ID} | Provisioned Ghost Ship artwork at ${path}`);\n  return path;\n}\n",
+      "after": "async function verifyGhostShipMapSource(path) {\n  const response = await fetch(path, { cache: \"no-store\" });\n  if (!response.ok) throw new Error(`Ghost Ship uploaded image returned HTTP ${response.status}`);\n  const blob = await response.blob();\n  if (!blob.size) throw new Error(\"Ghost Ship uploaded image was empty.\");\n  if (blob.type && !blob.type.startsWith(\"image/\")) {\n    throw new Error(`Ghost Ship uploaded asset was not an image (${blob.type}).`);\n  }\n  return path;\n}\n\nasync function provisionGhostShipMapAsset() {\n  const forgeActive = typeof globalThis.ForgeVTT !== \"undefined\" && Boolean(globalThis.ForgeVTT?.usingTheForge);\n  const FilePicker = globalThis.FilePicker ?? foundry.applications.apps.FilePicker?.implementation;\n  const worldId = game.world?.id;\n  if (!FilePicker || !worldId) throw new Error(\"Foundry FilePicker or world ID is unavailable.\");\n\n  const source = forgeActive ? \"forgevtt\" : \"data\";\n  const directory = forgeActive\n    ? `${MODULE_ID}/maps`\n    : `worlds/${worldId}/${MODULE_ID}/maps`;\n\n  try {\n    await FilePicker.createDirectory(source, directory, {});\n  } catch (error) {\n    if (!/exists/i.test(String(error?.message ?? error))) {\n      console.warn(`${MODULE_ID} | Could not create ${source}:${directory}`, error);\n    }\n  }\n\n  const blob = await fetchGhostShipMapBlob();\n  const file = new File([blob], MAP_FILENAME, { type: blob.type || \"image/webp\" });\n  const response = await FilePicker.upload(source, directory, file, {}, { notify: false });\n  const path = typeof response?.path === \"string\" ? response.path.trim() : \"\";\n  if (!path) throw new Error(`Ghost Ship upload to ${source}:${directory} returned no usable asset path.`);\n\n  await verifyGhostShipMapSource(path);\n  console.info(`${MODULE_ID} | Provisioned and verified Ghost Ship artwork at ${path}`);\n  return path;\n}\n",
+      "expectedOccurrences": 1
+    }
+  ],
+  "checks": [
+    {
+      "name": "Ghost Ship script syntax",
+      "run": "node --check scripts/orphaned-sun-scenes.mjs"
+    },
+    {
+      "name": "Forge source and upload verification present",
+      "run": "grep -q 'source = forgeActive ? \"forgevtt\" : \"data\"' scripts/orphaned-sun-scenes.mjs && grep -q 'verifyGhostShipMapSource' scripts/orphaned-sun-scenes.mjs && grep -q 'returned no usable asset path' scripts/orphaned-sun-scenes.mjs"
+    }
+  ]
+}
