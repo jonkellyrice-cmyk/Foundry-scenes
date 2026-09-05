@@ -8,7 +8,15 @@ Paste this manifest URL into the module installer:
 
 `https://raw.githubusercontent.com/jonkellyrice-cmyk/Foundry-scenes/main/module.json`
 
+The manifest points to a proper GitHub Release asset whose ZIP has `module.json` at the archive root, so Foundry and The Forge can install it directly.
+
 Then enable **Orphaned Sun — Foundry Scenes** in the Lancer world.
+
+## Releases
+
+Publishing is automated. Changing the versioned `module.json` on `main` runs the release workflow, validates the module package, builds `orphaned-sun-scenes.zip`, and creates or refreshes the matching GitHub Release. The stable download target used by the manifest is:
+
+`https://github.com/jonkellyrice-cmyk/Foundry-scenes/releases/latest/download/orphaned-sun-scenes.zip`
 
 ## Scene Library UI
 
