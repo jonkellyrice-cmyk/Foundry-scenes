@@ -1,0 +1,8 @@
+{
+  "project": "scene-library-diagnostics-v1",
+  "planSourceRef": "governor-plan/scene-library-diagnostics-v1",
+  "planSourceCommit": "df95235766b21e260420eca9640a4bcfa946a3cb",
+  "productionBranch": "governor-run/scene-library-diagnostics-v1/33973458248-1",
+  "baseBranch": "main",
+  "workflowRun": "https://github.com/jonkellyrice-cmyk/Foundry-scenes/actions/runs/33973458248"
+}
