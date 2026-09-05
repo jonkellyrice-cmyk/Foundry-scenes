@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "project": "scene-library-diagnostics-v3",
   "title": "Persist artifact point telemetry and add canvas/PIXI render-tree probe",
-  "status": "draft",
+  "status": "ready",
   "phases": [
     {
       "order": 1,
