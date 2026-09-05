@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "project": "ghost-ship-visibility-fix",
   "title": "Restore readable Ghost Ship canvas while preserving horror lighting",
-  "status": "draft",
+  "status": "ready",
   "phases": [
     {
       "order": 1,
