@@ -40,7 +40,7 @@
     },
     {
       "name": "Map asset provisioning and floor tile are present",
-      "run": "grep -q 'provisionGhostShipMapAsset' scripts/orphaned-sun-scenes.mjs && grep -q 'MAP_REMOTE_FALLBACK' scripts/orphaned-sun-scenes.mjs && grep -q 'ghostShipMapFloor' scripts/orphaned-sun-scenes.mjs && grep -q 'tiles: \[makeGhostShipMapTile(MAP_PATH)\]' scripts/orphaned-sun-scenes.mjs"
+      "run": "grep -q 'provisionGhostShipMapAsset' scripts/orphaned-sun-scenes.mjs && grep -q 'MAP_REMOTE_FALLBACK' scripts/orphaned-sun-scenes.mjs && grep -q 'ghostShipMapFloor' scripts/orphaned-sun-scenes.mjs && grep -Fq 'tiles: [makeGhostShipMapTile(MAP_PATH)]' scripts/orphaned-sun-scenes.mjs"
     }
   ]
 }
