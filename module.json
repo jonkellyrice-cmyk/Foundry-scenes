@@ -2,7 +2,7 @@
   "id": "orphaned-sun-scenes",
   "title": "Orphaned Sun — Foundry Scenes",
   "description": "Orphaned Sun GM tools for Foundry VTT v13, including prebuilt scenes, walls, doors, dynamic lighting, a scene library, and comic-book scene creation.",
-  "version": "0.3.9",
+  "version": "0.3.10",
   "compatibility": {
     "minimum": 13,
     "verified": "13.350",
