@@ -290,7 +290,14 @@ export function getGhostShipSceneData() {
 
 export async function ensureGhostShipScene() {
   const existing = game.scenes.find(scene => scene.getFlag(MODULE_ID, "sceneKey") === GHOST_SHIP_KEY);
-  if (existing) return existing;
+  if (existing) {
+    const sourceVersion = existing.getFlag(MODULE_ID, "sourceVersion");
+    const hasNoWalls = (existing.walls?.size ?? 0) === 0;
+    if (sourceVersion !== "0.1.0" || !hasNoWalls) return existing;
+
+    await existing.delete();
+    ui.notifications?.warn("Orphaned Sun Scenes: repairing the legacy Ghost Ship scene created without valid walls.");
+  }
 
   const scene = await Scene.create(getGhostShipSceneData());
   await game.settings.set(MODULE_ID, "ghostShipSeedVersion", MODULE_VERSION);
