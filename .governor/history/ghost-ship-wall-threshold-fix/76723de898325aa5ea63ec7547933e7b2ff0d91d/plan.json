@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "project": "ghost-ship-wall-threshold-fix",
+  "title": "Repair Signatory Ghost Ship scene import on Foundry V13",
+  "status": "ready",
+  "phases": [
+    {
+      "order": 1,
+      "id": "wall-threshold-v13",
+      "title": "Use Foundry V13-compatible wall threshold data",
+      "patch": "patches/001-wall-threshold-v13.patch.json"
+    },
+    {
+      "order": 2,
+      "id": "legacy-import-recovery",
+      "title": "Recover a legacy managed scene created without walls",
+      "patch": "patches/002-legacy-import-recovery.patch.json"
+    },
+    {
+      "order": 3,
+      "id": "release-0-2-1",
+      "title": "Publish the repaired module as 0.2.1",
+      "patch": "patches/003-release-0-2-1.patch.json"
+    }
+  ],
+  "finalChecks": [
+    {
+      "name": "Module JavaScript syntax",
+      "run": "find scripts -name '*.mjs' -print0 | xargs -0 -n1 node --check"
+    },
+    {
+      "name": "Ghost Ship wall thresholds are nullable, never zero",
+      "run": "node -e \"const s=require('fs').readFileSync('scripts/orphaned-sun-scenes.mjs','utf8'); if(!s.includes('threshold: { light: null, sight: null, sound: null, attenuation: false }')) throw new Error('nullable wall threshold tuple missing'); if(s.includes('threshold: { light: 0, sight: 0, sound: 0')) throw new Error('invalid zero wall thresholds remain');\""
+    },
+    {
+      "name": "Manifest and Ghost Ship seed versions agree",
+      "run": "node -e \"const fs=require('fs'); const m=JSON.parse(fs.readFileSync('module.json','utf8')); const s=fs.readFileSync('scripts/orphaned-sun-scenes.mjs','utf8'); if(m.version!=='0.2.1') throw new Error('manifest version is not 0.2.1'); if(!s.includes('const MODULE_VERSION = \\\"0.2.1\\\";')) throw new Error('Ghost Ship seed version is not 0.2.1');\""
+    }
+  ]
+}
