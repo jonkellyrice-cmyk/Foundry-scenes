@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "foundation",
+  "phase": "foundation",
+  "summary": "Create the first implementation file and make one guarded edit to an existing file.",
+  "operations": [
+    {
+      "op": "write",
+      "path": "scripts/example.mjs",
+      "content": "export const EXAMPLE = true;\n"
+    },
+    {
+      "op": "replace",
+      "path": "README.md",
+      "before": "old exact text",
+      "after": "new exact text",
+      "expectedOccurrences": 1
+    }
+  ],
+  "checks": [
+    {
+      "name": "Example script syntax",
+      "run": "node --check scripts/example.mjs"
+    }
+  ]
+}
