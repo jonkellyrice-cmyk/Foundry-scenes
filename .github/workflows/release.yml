@@ -1,0 +1,91 @@
+name: Publish Foundry module release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'module.json'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: foundry-module-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Read and validate module manifest
+        id: manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(jq -r '.version' module.json)"
+          MODULE_ID="$(jq -r '.id' module.json)"
+          test -n "$VERSION"
+          test "$VERSION" != "null"
+          test "$MODULE_ID" = "orphaned-sun-scenes"
+          test -f assets/maps/signatory-ghost-ship.webp
+          test -f scripts/orphaned-sun-scenes.mjs
+          test -f scripts/scene-library.mjs
+          test -f styles/scene-library.css
+          test -f templates/scene-library.hbs
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Build Foundry-compatible module ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          mkdir -p dist/package
+          cp module.json README.md dist/package/
+          cp -R assets scripts styles templates dist/package/
+          (
+            cd dist/package
+            zip -r ../orphaned-sun-scenes.zip module.json README.md assets scripts styles templates \
+              -x '*.DS_Store' -x '__MACOSX/*'
+          )
+
+      - name: Validate ZIP root and manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -Z1 dist/orphaned-sun-scenes.zip | grep -qx 'module.json'
+          ! unzip -Z1 dist/orphaned-sun-scenes.zip | grep -q '^Foundry-scenes/'
+          rm -rf dist/verify
+          mkdir -p dist/verify
+          unzip -q dist/orphaned-sun-scenes.zip -d dist/verify
+          test "$(jq -r '.id' dist/verify/module.json)" = "orphaned-sun-scenes"
+          test "$(jq -r '.version' dist/verify/module.json)" = "${{ steps.manifest.outputs.version }}"
+          test -s dist/verify/assets/maps/signatory-ghost-ship.webp
+          test -s dist/verify/scripts/orphaned-sun-scenes.mjs
+          test -s dist/verify/scripts/scene-library.mjs
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.manifest.outputs.tag }}
+          VERSION: ${{ steps.manifest.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/orphaned-sun-scenes.zip --clobber
+            gh release edit "$TAG" \
+              --title "Orphaned Sun — Foundry Scenes $VERSION" \
+              --notes "Foundry VTT v13 module package for Orphaned Sun scenes. Install using the manifest URL from the repository README." \
+              --latest
+          else
+            gh release create "$TAG" dist/orphaned-sun-scenes.zip \
+              --target "$GITHUB_SHA" \
+              --title "Orphaned Sun — Foundry Scenes $VERSION" \
+              --notes "Foundry VTT v13 module package for Orphaned Sun scenes. Install using the manifest URL from the repository README." \
+              --latest
+          fi
