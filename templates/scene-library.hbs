@@ -287,6 +287,87 @@
         </section>
       {{/if}}
 
+      {{#if diagnostics.canvasPointProbe}}
+        <section class="os-diagnostic-card os-point-probe">
+          <div class="os-diagnostic-heading">
+            <div>
+              <p class="os-library-kicker">CANVAS / WEBGL RENDER-TREE TELEMETRY</p>
+              <h3><i class="fa-solid fa-layer-group"></i> Canvas / PIXI point probe</h3>
+            </div>
+            <span class="os-diagnostic-badge">{{diagnostics.canvasPointProbe.hitCount}} render hits</span>
+          </div>
+          <p>{{diagnostics.canvasPointProbe.status}}. The probe walked {{diagnostics.canvasPointProbe.traversed}} display object(s) and reports objects whose bounds, hit test, or exposed green color state intersect the picked location.</p>
+
+          <dl class="os-diagnostic-kv os-point-style-kv">
+            <div><dt>Client point</dt><dd>{{diagnostics.canvasPointProbe.coordinates.client.x}}, {{diagnostics.canvasPointProbe.coordinates.client.y}}</dd></div>
+            <div><dt>Renderer point</dt><dd>{{diagnostics.canvasPointProbe.coordinates.renderer.x}}, {{diagnostics.canvasPointProbe.coordinates.renderer.y}}</dd></div>
+            <div><dt>Scene point</dt><dd>{{diagnostics.canvasPointProbe.coordinates.scene.x}}, {{diagnostics.canvasPointProbe.coordinates.scene.y}}</dd></div>
+            <div><dt>Renderer screen</dt><dd>{{diagnostics.canvasPointProbe.coordinates.rendererScreen.width}} × {{diagnostics.canvasPointProbe.coordinates.rendererScreen.height}}</dd></div>
+            <div><dt>Green signals</dt><dd>{{diagnostics.canvasPointProbe.greenSignalCount}}</dd></div>
+            <div><dt>Traversal truncated</dt><dd>{{#if diagnostics.canvasPointProbe.truncated}}Yes{{else}}No{{/if}}</dd></div>
+          </dl>
+
+          <details class="os-point-css-rules" open>
+            <summary>Render-tree hits ({{diagnostics.canvasPointProbe.hitCount}})</summary>
+            <div class="os-point-stack">
+              {{#each diagnostics.canvasPointProbe.hits}}
+                <article class="os-point-stack-entry {{#if greenSignals.length}}is-green{{/if}}">
+                  <div class="os-point-stack-title">
+                    <strong>{{className}} {{#if name}}· {{name}}{{/if}}</strong>
+                    {{#if greenSignals.length}}<span class="os-diagnostic-badge">{{greenSignals.length}} green</span>{{/if}}
+                  </div>
+                  <code>depth {{depth}} · z {{zIndex}} · sort {{sort}} · alpha {{alpha}} / world {{worldAlpha}}</code>
+                  {{#if bounds}}
+                    <code>bounds x{{bounds.x}} y{{bounds.y}} · {{bounds.width}}×{{bounds.height}} · renderer={{hitRendererBounds}} scene={{hitSceneBounds}} containsPoint={{containsPoint}}</code>
+                  {{else}}
+                    <code>bounds unavailable · containsPoint={{containsPoint}}</code>
+                  {{/if}}
+                  {{#if document}}
+                    <span>{{document.documentName}} · {{document.id}} {{document.name}}</span>
+                  {{/if}}
+                  {{#if filters.length}}<span>Filters: {{#each filters}}{{this}} {{/each}}</span>{{/if}}
+                  {{#if mask}}<span>Mask: {{mask.className}} {{mask.name}}</span>{{/if}}
+
+                  {{#if greenSignals.length}}
+                    <div class="os-point-css-rule">
+                      <strong>Green color signals</strong>
+                      {{#each greenSignals}}
+                        <code>{{path}} = {{hex}} ({{value}})</code>
+                      {{/each}}
+                    </div>
+                  {{/if}}
+
+                  {{#if parentChain.length}}
+                    <details class="os-point-css-rules">
+                      <summary>Parent chain ({{parentChain.length}})</summary>
+                      {{#each parentChain}}
+                        <code>{{className}} {{name}}</code>
+                      {{/each}}
+                    </details>
+                  {{/if}}
+
+                </article>
+              {{else}}
+                <p class="os-diagnostic-empty">No PIXI display objects matched this point.</p>
+              {{/each}}
+            </div>
+          </details>
+
+          <details class="os-point-css-rules">
+            <summary>Top-level canvas groups ({{diagnostics.canvasPointProbe.topLevelGroups.length}})</summary>
+            <div class="os-point-stack">
+              {{#each diagnostics.canvasPointProbe.topLevelGroups}}
+                <article class="os-point-stack-entry {{#if greenSignals.length}}is-green{{/if}}">
+                  <strong>#{{order}} {{className}} {{name}}</strong>
+                  <code>children {{childCount}} · z {{zIndex}} · alpha {{alpha}} / world {{worldAlpha}} · renderer={{hitRendererBounds}} scene={{hitSceneBounds}}</code>
+                  {{#if bounds}}<code>bounds x{{bounds.x}} y{{bounds.y}} · {{bounds.width}}×{{bounds.height}}</code>{{/if}}
+                </article>
+              {{/each}}
+            </div>
+          </details>
+        </section>
+      {{/if}}
+
       {{#if diagnostics.hasWarnings}}
         <section class="os-diagnostic-card os-diagnostic-warnings">
           <h3><i class="fa-solid fa-triangle-exclamation"></i> Diagnostic observations</h3>

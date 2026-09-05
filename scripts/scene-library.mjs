@@ -14,12 +14,41 @@ import {
   clearComicDraft,
   createComicBookScene
 } from "./comic-book-maker.mjs";
-import { collectSceneDiagnostics, collectDomPointProbe, diagnosticsClipboardText } from "./scene-diagnostics.mjs";
+import { collectSceneDiagnostics, collectArtifactPointProbe, diagnosticsClipboardText } from "./scene-diagnostics.mjs";
 
 const MODULE_ID = "orphaned-sun-scenes";
 const APP_ID = `${MODULE_ID}-scene-library`;
 const TOOLBAR_CONTROL = `${MODULE_ID}-control`;
 const GHOST_SHIP_KEY = "signatory-ghost-ship";
+
+function diagnosticProbeStorageKey() {
+  const worldId = game.world?.id ?? "world";
+  const userId = game.user?.id ?? "user";
+  return `${MODULE_ID}:diagnostic-artifact-probe:${worldId}:${userId}`;
+}
+
+function loadDiagnosticPointProbe() {
+  try {
+    const raw = globalThis.sessionStorage?.getItem(diagnosticProbeStorageKey());
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveDiagnosticPointProbe(probe) {
+  try {
+    if (!probe) {
+      globalThis.sessionStorage?.removeItem(diagnosticProbeStorageKey());
+      return;
+    }
+    globalThis.sessionStorage?.setItem(diagnosticProbeStorageKey(), JSON.stringify(probe));
+  } catch (error) {
+    console.warn(`${MODULE_ID} | Could not persist diagnostic artifact probe`, error);
+  }
+}
 
 const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;
 
@@ -105,7 +134,7 @@ export class OrphanedSunSceneLibrary extends HandlebarsApplicationMixin(Applicat
     super(options);
     this.activeTab = "scenes";
     this.comicDraft = loadComicDraft();
-    this.diagnosticPointProbe = null;
+    this.diagnosticPointProbe = loadDiagnosticPointProbe();
     this._diagnosticPickCleanup = null;
   }
 
@@ -159,7 +188,10 @@ export class OrphanedSunSceneLibrary extends HandlebarsApplicationMixin(Applicat
     const context = await super._prepareContext(options);
     const scenes = Array.from(SCENE_LIBRARY.values()).map(sceneDescriptor);
     const diagnostics = this.activeTab === "diagnostics"
-      ? await collectSceneDiagnostics(findManagedScene(GHOST_SHIP_KEY), { pointProbe: this.diagnosticPointProbe })
+      ? await collectSceneDiagnostics(findManagedScene(GHOST_SHIP_KEY), {
+          pointProbe: this.diagnosticPointProbe?.dom ?? null,
+          canvasPointProbe: this.diagnosticPointProbe?.canvas ?? null
+        })
       : null;
     return {
       ...context,
@@ -265,8 +297,11 @@ export class OrphanedSunSceneLibrary extends HandlebarsApplicationMixin(Applicat
       event.preventDefault();
       event.stopImmediatePropagation();
       cleanup();
-      this.diagnosticPointProbe = collectDomPointProbe(event.clientX, event.clientY);
-      ui.notifications?.info(`Captured artifact point at x${this.diagnosticPointProbe.x}, y${this.diagnosticPointProbe.y}.`);
+      this.diagnosticPointProbe = collectArtifactPointProbe(event.clientX, event.clientY);
+      saveDiagnosticPointProbe(this.diagnosticPointProbe);
+      const domPoint = this.diagnosticPointProbe.dom;
+      const canvasHits = this.diagnosticPointProbe.canvas?.hitCount ?? 0;
+      ui.notifications?.info(`Captured artifact point at x${domPoint.x}, y${domPoint.y} with ${canvasHits} canvas/PIXI render hit(s).`);
       await this.render({ force: true });
     };
 
@@ -286,7 +321,11 @@ export class OrphanedSunSceneLibrary extends HandlebarsApplicationMixin(Applicat
 
   static async diagnosticsCopy() {
     try {
-      const diagnostics = await collectSceneDiagnostics(findManagedScene(GHOST_SHIP_KEY), { pointProbe: this.diagnosticPointProbe });
+      const probe = this.diagnosticPointProbe ?? loadDiagnosticPointProbe();
+      const diagnostics = await collectSceneDiagnostics(findManagedScene(GHOST_SHIP_KEY), {
+        pointProbe: probe?.dom ?? null,
+        canvasPointProbe: probe?.canvas ?? null
+      });
       await navigator.clipboard.writeText(diagnosticsClipboardText(diagnostics));
       ui.notifications?.info("Scene diagnostics copied to clipboard.");
     } catch (error) {
