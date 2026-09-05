@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "project": "ghost-ship-padding-alignment-fix",
+  "title": "Remove Ghost Ship scene padding and realign managed geometry",
+  "status": "ready",
+  "phases": [
+    {
+      "order": 1,
+      "id": "canonical-zero-padding-scene",
+      "title": "Make the Ghost Ship scene use the map pixel rectangle directly with no padding or background transform",
+      "patch": "patches/001-canonical-zero-padding-scene.patch.json"
+    },
+    {
+      "order": 2,
+      "id": "existing-scene-geometry-migration",
+      "title": "Migrate existing Ghost Ship scenes to zero padding, purge legacy map tiles, preserve token map positions, and rebuild walls and lights",
+      "patch": "patches/002-existing-scene-geometry-migration.patch.json"
+    },
+    {
+      "order": 3,
+      "id": "release-0-3-7",
+      "title": "Publish the alignment repair as module 0.3.7",
+      "patch": "patches/003-release-0-3-7.patch.json"
+    }
+  ],
+  "finalChecks": [
+    {
+      "name": "Module JavaScript syntax",
+      "run": "find scripts -name '*.mjs' -print0 | xargs -0 -n1 node --check"
+    },
+    {
+      "name": "Ghost Ship has no canvas padding",
+      "run": "grep -q 'padding: 0,' scripts/orphaned-sun-scenes.mjs"
+    },
+    {
+      "name": "Background transform is canonical",
+      "run": "grep -q 'offsetX: 0' scripts/orphaned-sun-scenes.mjs && grep -q 'scaleX: 1' scripts/orphaned-sun-scenes.mjs"
+    },
+    {
+      "name": "Geometry migration rebuilds walls and lights",
+      "run": "grep -q 'replaceGhostShipManagedWalls' scripts/orphaned-sun-scenes.mjs && grep -q 'preserveGhostShipTokenMapPositions' scripts/orphaned-sun-scenes.mjs"
+    },
+    {
+      "name": "Manifest version",
+      "run": "node -e \"const m=JSON.parse(require('fs').readFileSync('module.json','utf8')); if(m.version!=='0.3.7') throw new Error('expected module 0.3.7');\""
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "id": "canonical-zero-padding-scene",
+  "phase": "canonical-zero-padding-scene",
+  "summary": "Render the Ghost Ship map at its native 1672x941 pixel rectangle with no Foundry scene padding and an explicit identity background transform so authored wall/light coordinates share the same origin as the artwork.",
+  "operations": [
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "    padding: 0.04,\n",
+      "after": "    padding: 0,\n",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/orphaned-sun-scenes.mjs",
+      "before": "    background: { src: MAP_PATH },\n",
+      "after": "    background: {\n      src: MAP_PATH,\n      scaleX: 1,\n      scaleY: 1,\n      offsetX: 0,\n      offsetY: 0,\n      rotation: 0\n    },\n",
+      "expectedOccurrences": 1
+    }
+  ],
+  "checks": [
+    {
+      "name": "Ghost Ship script syntax",
+      "run": "node --check scripts/orphaned-sun-scenes.mjs"
+    },
+    {
+      "name": "Scene padding removed",
+      "run": "grep -q 'padding: 0,' scripts/orphaned-sun-scenes.mjs && ! grep -q 'padding: 0.04' scripts/orphaned-sun-scenes.mjs"
+    },
+    {
+      "name": "Background identity transform present",
+      "run": "grep -q 'scaleX: 1' scripts/orphaned-sun-scenes.mjs && grep -q 'scaleY: 1' scripts/orphaned-sun-scenes.mjs && grep -q 'offsetX: 0' scripts/orphaned-sun-scenes.mjs && grep -q 'offsetY: 0' scripts/orphaned-sun-scenes.mjs"
+    }
+  ]
+}
