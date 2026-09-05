@@ -34,7 +34,7 @@
     },
     {
       "name": "Green artifact probe telemetry present",
-      "run": "grep -q 'greenArtifactCandidates' scripts/scene-library.mjs && grep -q 'Green artifact probe' templates/scene-library.hbs"
+      "run": "grep -q 'greenArtifactCandidates' scripts/scene-diagnostics.mjs && grep -q 'Green artifact probe' templates/scene-library.hbs"
     },
     {
       "name": "Manifest version",
