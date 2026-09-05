@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "id": "persisted-probe-ui",
+  "phase": "persisted-probe-ui",
+  "summary": "Persist the last picked artifact probe for the browser session and expose the canvas/PIXI render-tree results in the Diagnostics UI and copied JSON.",
+  "operations": [
+    {
+      "op": "replace",
+      "path": "scripts/scene-library.mjs",
+      "before": "import { collectSceneDiagnostics, collectDomPointProbe, diagnosticsClipboardText } from \"./scene-diagnostics.mjs\";",
+      "after": "import { collectSceneDiagnostics, collectArtifactPointProbe, diagnosticsClipboardText } from \"./scene-diagnostics.mjs\";",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/scene-library.mjs",
+      "before": "const GHOST_SHIP_KEY = \"signatory-ghost-ship\";\n\nconst { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;",
+      "after": "const GHOST_SHIP_KEY = \"signatory-ghost-ship\";\n\nfunction diagnosticProbeStorageKey() {\n  const worldId = game.world?.id ?? \"world\";\n  const userId = game.user?.id ?? \"user\";\n  return `${MODULE_ID}:diagnostic-artifact-probe:${worldId}:${userId}`;\n}\n\nfunction loadDiagnosticPointProbe() {\n  try {\n    const raw = globalThis.sessionStorage?.getItem(diagnosticProbeStorageKey());\n    if (!raw) return null;\n    const parsed = JSON.parse(raw);\n    return parsed && typeof parsed === \"object\" ? parsed : null;\n  } catch {\n    return null;\n  }\n}\n\nfunction saveDiagnosticPointProbe(probe) {\n  try {\n    if (!probe) {\n      globalThis.sessionStorage?.removeItem(diagnosticProbeStorageKey());\n      return;\n    }\n    globalThis.sessionStorage?.setItem(diagnosticProbeStorageKey(), JSON.stringify(probe));\n  } catch (error) {\n    console.warn(`${MODULE_ID} | Could not persist diagnostic artifact probe`, error);\n  }\n}\n\nconst { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/scene-library.mjs",
+      "before": "    this.diagnosticPointProbe = null;\n    this._diagnosticPickCleanup = null;",
+      "after": "    this.diagnosticPointProbe = loadDiagnosticPointProbe();\n    this._diagnosticPickCleanup = null;",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/scene-library.mjs",
+      "before": "    const diagnostics = this.activeTab === \"diagnostics\"\n      ? await collectSceneDiagnostics(findManagedScene(GHOST_SHIP_KEY), { pointProbe: this.diagnosticPointProbe })\n      : null;",
+      "after": "    const diagnostics = this.activeTab === \"diagnostics\"\n      ? await collectSceneDiagnostics(findManagedScene(GHOST_SHIP_KEY), {\n          pointProbe: this.diagnosticPointProbe?.dom ?? null,\n          canvasPointProbe: this.diagnosticPointProbe?.canvas ?? null\n        })\n      : null;",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/scene-library.mjs",
+      "before": "      this.diagnosticPointProbe = collectDomPointProbe(event.clientX, event.clientY);\n      ui.notifications?.info(`Captured artifact point at x${this.diagnosticPointProbe.x}, y${this.diagnosticPointProbe.y}.`);\n      await this.render({ force: true });",
+      "after": "      this.diagnosticPointProbe = collectArtifactPointProbe(event.clientX, event.clientY);\n      saveDiagnosticPointProbe(this.diagnosticPointProbe);\n      const domPoint = this.diagnosticPointProbe.dom;\n      const canvasHits = this.diagnosticPointProbe.canvas?.hitCount ?? 0;\n      ui.notifications?.info(`Captured artifact point at x${domPoint.x}, y${domPoint.y} with ${canvasHits} canvas/PIXI render hit(s).`);\n      await this.render({ force: true });",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "scripts/scene-library.mjs",
+      "before": "      const diagnostics = await collectSceneDiagnostics(findManagedScene(GHOST_SHIP_KEY), { pointProbe: this.diagnosticPointProbe });\n      await navigator.clipboard.writeText(diagnosticsClipboardText(diagnostics));",
+      "after": "      const probe = this.diagnosticPointProbe ?? loadDiagnosticPointProbe();\n      const diagnostics = await collectSceneDiagnostics(findManagedScene(GHOST_SHIP_KEY), {\n        pointProbe: probe?.dom ?? null,\n        canvasPointProbe: probe?.canvas ?? null\n      });\n      await navigator.clipboard.writeText(diagnosticsClipboardText(diagnostics));",
+      "expectedOccurrences": 1
+    },
+    {
+      "op": "replace",
+      "path": "templates/scene-library.hbs",
+      "before": "      {{/if}}\n\n      {{#if diagnostics.hasWarnings}}\n        <section class=\"os-diagnostic-card os-diagnostic-warnings\">",
+      "after": "      {{/if}}\n\n      {{#if diagnostics.canvasPointProbe}}\n        <section class=\"os-diagnostic-card os-point-probe\">\n          <div class=\"os-diagnostic-heading\">\n            <div>\n              <p class=\"os-library-kicker\">CANVAS / WEBGL RENDER-TREE TELEMETRY</p>\n              <h3><i class=\"fa-solid fa-layer-group\"></i> Canvas / PIXI point probe</h3>\n            </div>\n            <span class=\"os-diagnostic-badge\">{{diagnostics.canvasPointProbe.hitCount}} render hits</span>\n          </div>\n          <p>{{diagnostics.canvasPointProbe.status}}. The probe walked {{diagnostics.canvasPointProbe.traversed}} display object(s) and reports objects whose bounds, hit test, or exposed green color state intersect the picked location.</p>\n\n          <dl class=\"os-diagnostic-kv os-point-style-kv\">\n            <div><dt>Client point</dt><dd>{{diagnostics.canvasPointProbe.coordinates.client.x}}, {{diagnostics.canvasPointProbe.coordinates.client.y}}</dd></div>\n            <div><dt>Renderer point</dt><dd>{{diagnostics.canvasPointProbe.coordinates.renderer.x}}, {{diagnostics.canvasPointProbe.coordinates.renderer.y}}</dd></div>\n            <div><dt>Scene point</dt><dd>{{diagnostics.canvasPointProbe.coordinates.scene.x}}, {{diagnostics.canvasPointProbe.coordinates.scene.y}}</dd></div>\n            <div><dt>Renderer screen</dt><dd>{{diagnostics.canvasPointProbe.coordinates.rendererScreen.width}} × {{diagnostics.canvasPointProbe.coordinates.rendererScreen.height}}</dd></div>\n            <div><dt>Green signals</dt><dd>{{diagnostics.canvasPointProbe.greenSignalCount}}</dd></div>\n            <div><dt>Traversal truncated</dt><dd>{{#if diagnostics.canvasPointProbe.truncated}}Yes{{else}}No{{/if}}</dd></div>\n          </dl>\n\n          <details class=\"os-point-css-rules\" open>\n            <summary>Render-tree hits ({{diagnostics.canvasPointProbe.hitCount}})</summary>\n            <div class=\"os-point-stack\">\n              {{#each diagnostics.canvasPointProbe.hits}}\n                <article class=\"os-point-stack-entry {{#if greenSignals.length}}is-green{{/if}}\">\n                  <div class=\"os-point-stack-title\">\n                    <strong>{{className}} {{#if name}}· {{name}}{{/if}}</strong>\n                    {{#if greenSignals.length}}<span class=\"os-diagnostic-badge\">{{greenSignals.length}} green</span>{{/if}}\n                  </div>\n                  <code>depth {{depth}} · z {{zIndex}} · sort {{sort}} · alpha {{alpha}} / world {{worldAlpha}}</code>\n                  {{#if bounds}}\n                    <code>bounds x{{bounds.x}} y{{bounds.y}} · {{bounds.width}}×{{bounds.height}} · renderer={{hitRendererBounds}} scene={{hitSceneBounds}} containsPoint={{containsPoint}}</code>\n                  {{else}}\n                    <code>bounds unavailable · containsPoint={{containsPoint}}</code>\n                  {{/if}}\n                  {{#if document}}\n                    <span>{{document.documentName}} · {{document.id}} {{document.name}}</span>\n                  {{/if}}\n                  {{#if filters.length}}<span>Filters: {{#each filters}}{{this}} {{/each}}</span>{{/if}}\n                  {{#if mask}}<span>Mask: {{mask.className}} {{mask.name}}</span>{{/if}}\n\n                  {{#if greenSignals.length}}\n                    <div class=\"os-point-css-rule\">\n                      <strong>Green color signals</strong>\n                      {{#each greenSignals}}\n                        <code>{{path}} = {{hex}} ({{value}})</code>\n                      {{/each}}\n                    </div>\n                  {{/if}}\n\n                  {{#if parentChain.length}}\n                    <details class=\"os-point-css-rules\">\n                      <summary>Parent chain ({{parentChain.length}})</summary>\n                      {{#each parentChain}}\n                        <code>{{className}} {{name}}</code>\n                      {{/each}}\n                    </details>\n                  {{/if}}\n\n                </article>\n              {{else}}\n                <p class=\"os-diagnostic-empty\">No PIXI display objects matched this point.</p>\n              {{/each}}\n            </div>\n          </details>\n\n          <details class=\"os-point-css-rules\">\n            <summary>Top-level canvas groups ({{diagnostics.canvasPointProbe.topLevelGroups.length}})</summary>\n            <div class=\"os-point-stack\">\n              {{#each diagnostics.canvasPointProbe.topLevelGroups}}\n                <article class=\"os-point-stack-entry {{#if greenSignals.length}}is-green{{/if}}\">\n                  <strong>#{{order}} {{className}} {{name}}</strong>\n                  <code>children {{childCount}} · z {{zIndex}} · alpha {{alpha}} / world {{worldAlpha}} · renderer={{hitRendererBounds}} scene={{hitSceneBounds}}</code>\n                  {{#if bounds}}<code>bounds x{{bounds.x}} y{{bounds.y}} · {{bounds.width}}×{{bounds.height}}</code>{{/if}}\n                </article>\n              {{/each}}\n            </div>\n          </details>\n        </section>\n      {{/if}}\n\n      {{#if diagnostics.hasWarnings}}\n        <section class=\"os-diagnostic-card os-diagnostic-warnings\">",
+      "expectedOccurrences": 1
+    }
+  ],
+  "checks": [
+    {
+      "name": "Scene library JavaScript syntax",
+      "run": "node --check scripts/scene-library.mjs"
+    },
+    {
+      "name": "Persistent probe storage wired",
+      "run": "grep -q 'function diagnosticProbeStorageKey' scripts/scene-library.mjs && grep -q 'sessionStorage' scripts/scene-library.mjs && grep -q 'collectArtifactPointProbe' scripts/scene-library.mjs"
+    },
+    {
+      "name": "Canvas probe UI present",
+      "run": "grep -q 'Canvas / PIXI point probe' templates/scene-library.hbs && grep -q 'canvasPointProbe.hits' templates/scene-library.hbs"
+    }
+  ]
+}
