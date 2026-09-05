@@ -15,9 +15,10 @@ It is intentionally not part of the Foundry module runtime. Nothing under `dev/`
 7. Production always starts from a fresh copy of `main`; it never continues from an unknown partially edited working tree.
 8. Every mutating operation has a deterministic precondition. If the repository no longer matches the patch's expectation, the governor stops instead of guessing.
 9. Each successful phase becomes its own commit on a temporary production branch.
-10. The governor opens and merges a PR only after every phase and every final check passes.
-11. A failed run never merges. GitHub Actions reports the exact phase, operation/check, and command that failed.
-12. A successful run archives the immutable plan, patches, source commit, and run metadata under `.governor/history/`.
+10. The governor merges the production branch into `main` only after every phase and every final check passes.
+11. Immediately before merging, it verifies that `main` has not moved since production began; base-branch drift blocks the merge and requires a clean rerun.
+12. A failed run never merges. GitHub Actions reports the exact phase, operation/check, and command that failed.
+13. A successful run archives the immutable plan, patches, source commit, and run metadata under `.governor/history/`.
 
 ## Repository layout
 
@@ -98,9 +99,10 @@ Production does the following:
 6. repeats for every remaining phase;
 7. runs the project's final checks;
 8. archives the exact plan and patch chain plus run metadata;
-9. opens a production PR against `main`;
-10. comments the successful run on the PR;
-11. squash-merges the PR and deletes the production branch.
+9. re-fetches `main` and verifies it is still the exact base commit production started from;
+10. fast-forward pushes the validated phase commits into `main`;
+11. deletes the temporary production branch;
+12. explicitly dispatches the module release workflow when `module.json` changed.
 
 Production branches are unique per workflow attempt:
 
@@ -108,7 +110,9 @@ Production branches are unique per workflow attempt:
 governor-run/<project>/<run-id>-<attempt>
 ```
 
-A failed run therefore cannot contaminate a later retry.
+A failed run therefore cannot contaminate a later retry. Successful phase commits remain visible on the temporary branch during a failed run, which makes diagnosis easy, but the repair is still made in the planning patch rather than by editing that generated branch.
+
+The merge is deliberately a guarded fast-forward instead of a bot-created pull request. This avoids depending on the repository setting that permits GitHub Actions to create pull requests, preserves one commit per executed phase, and fails safely if another change lands on `main` during production.
 
 ## Targeted repair loop
 
