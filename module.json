@@ -1,8 +1,8 @@
 {
   "id": "orphaned-sun-scenes",
   "title": "Orphaned Sun — Foundry Scenes",
-  "description": "Prebuilt Orphaned Sun scenes for Foundry VTT v13. Includes the Signatory Ghost Ship map with walls, doors, fog-of-war vision, and sparse dynamic lighting.",
-  "version": "0.1.0",
+  "description": "Prebuilt Orphaned Sun scenes for Foundry VTT v13 with a GM scene-library UI, walls, doors, fog-of-war vision, and dynamic lighting.",
+  "version": "0.2.0",
   "compatibility": {
     "minimum": 13,
     "verified": "13.350",
@@ -14,7 +14,11 @@
     }
   ],
   "esmodules": [
-    "scripts/orphaned-sun-scenes.mjs"
+    "scripts/orphaned-sun-scenes.mjs",
+    "scripts/scene-library.mjs"
+  ],
+  "styles": [
+    "styles/scene-library.css"
   ],
   "url": "https://github.com/jonkellyrice-cmyk/Foundry-scenes",
   "manifest": "https://raw.githubusercontent.com/jonkellyrice-cmyk/Foundry-scenes/main/module.json",
