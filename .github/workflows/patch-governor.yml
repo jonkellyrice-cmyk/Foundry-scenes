@@ -22,6 +22,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: patch-governor-${{ github.ref }}
@@ -163,11 +164,25 @@ jobs:
               exit $APPLY_STATUS
             fi
 
+            BEFORE_CHECKS="$(git status --porcelain=v1 --untracked-files=all)"
             set +e
             CHECK_OUTPUT="$(node "$GOVERNOR" checks --project-dir "$PLAN_DIR" --phase "$PHASE" 2>&1)"
             CHECK_STATUS=$?
             set -e
             printf '%s\n' "$CHECK_OUTPUT"
+            AFTER_CHECKS="$(git status --porcelain=v1 --untracked-files=all)"
+            if [[ "$AFTER_CHECKS" != "$BEFORE_CHECKS" ]]; then
+              echo "::error title=Governor check mutated workspace::$PHASE validation commands changed repository files. Checks must be read-only."
+              echo "- ❌ Phase checks mutated the workspace" >> "$REPORT"
+              echo '```text' >> "$REPORT"
+              echo "Before checks:" >> "$REPORT"
+              printf '%s\n' "$BEFORE_CHECKS" >> "$REPORT"
+              echo "After checks:" >> "$REPORT"
+              printf '%s\n' "$AFTER_CHECKS" >> "$REPORT"
+              echo '```' >> "$REPORT"
+              cat "$REPORT" >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
             if [[ $CHECK_STATUS -ne 0 ]]; then
               echo "::error title=Governor phase checks failed::$PHASE failed validation. $CHECK_OUTPUT"
               echo "- ✅ Patch applied" >> "$REPORT"
@@ -200,11 +215,28 @@ jobs:
         run: |
           set -euo pipefail
           PLAN_DIR="$RUNNER_TEMP/governor-plan"
+          BEFORE_CHECKS="$(git status --porcelain=v1 --untracked-files=all)"
           set +e
           OUTPUT="$(node dev/patch-governor.mjs final-checks --project-dir "$PLAN_DIR" 2>&1)"
           STATUS=$?
           set -e
           printf '%s\n' "$OUTPUT"
+          AFTER_CHECKS="$(git status --porcelain=v1 --untracked-files=all)"
+          if [[ "$AFTER_CHECKS" != "$BEFORE_CHECKS" ]]; then
+            echo "::error title=Governor final checks mutated workspace::Final validation commands changed repository files. Checks must be read-only."
+            {
+              echo
+              echo "## Final validation"
+              echo "❌ Final checks mutated the workspace. Validation commands must be read-only."
+              echo '```text'
+              echo "Before checks:"
+              printf '%s\n' "$BEFORE_CHECKS"
+              echo "After checks:"
+              printf '%s\n' "$AFTER_CHECKS"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
           if [[ $STATUS -ne 0 ]]; then
             echo "::error title=Governor final validation failed::$OUTPUT"
             {
