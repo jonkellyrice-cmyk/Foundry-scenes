@@ -55,6 +55,19 @@ The Scene Library shows every scene bundled with the module and whether that sce
 
 Once imported, the scene is an ordinary Foundry Scene. You can freely edit its walls, lights, doors, tokens, sounds, tiles, regions, and scene settings. The module does not silently overwrite those edits.
 
+## Comic Book Scene Maker
+
+The GM Tools window now includes a **Comic Book Scene** tab alongside the Scene Library. It is designed for sequential visual storytelling during a session.
+
+- Drop or choose one or more image files from the GM client. Uploads are stored through Foundry FilePicker so native Foundry and The Forge both return usable asset paths.
+- Existing Foundry paths, module asset paths, or image URLs can also be added directly.
+- Choose landscape or portrait page format and a simple comic-panel layout.
+- Reorder or remove panels while watching the live page preview.
+- **Create Comic Book Scene** creates a normal gridless Foundry Scene. The off-white page and black panel frames are locked visible Tiles; each story image is a separate unlocked Tile using cover-cropping.
+- Every story-image Tile starts **hidden from players**. Reveal the Tiles one at a time with Foundry's normal Tile visibility control as the story progresses.
+
+The current draft is stored as a world setting, so closing the GM Tools window or reloading Foundry does not discard the panel list. Uploaded files are not deleted when the draft is cleared.
+
 ## Signatory Ghost Ship
 
 The initial bundled scene includes:
