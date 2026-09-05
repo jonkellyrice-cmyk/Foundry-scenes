@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "project": "example-project",
+  "title": "Example multi-phase project",
+  "status": "draft",
+  "phases": [
+    {
+      "order": 1,
+      "id": "foundation",
+      "title": "Foundation",
+      "patch": "patches/001-foundation.patch.json"
+    },
+    {
+      "order": 2,
+      "id": "feature",
+      "title": "Feature implementation",
+      "patch": "patches/002-feature.patch.json"
+    },
+    {
+      "order": 3,
+      "id": "integration",
+      "title": "Integration and UI wiring",
+      "patch": "patches/003-integration.patch.json"
+    }
+  ],
+  "finalChecks": [
+    {
+      "name": "JavaScript syntax",
+      "run": "find scripts -name '*.mjs' -print0 | xargs -0 -n1 node --check"
+    },
+    {
+      "name": "Manifest parses",
+      "run": "node -e \"JSON.parse(require('fs').readFileSync('module.json','utf8'))\""
+    }
+  ]
+}
