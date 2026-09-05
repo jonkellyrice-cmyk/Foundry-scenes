@@ -47,7 +47,7 @@
     },
     {
       "name": "Single image layer only",
-      "run": "! grep -q 'makeGhostShipMapTile' scripts/orphaned-sun-scenes.mjs && ! grep -q 'tiles: \[' scripts/orphaned-sun-scenes.mjs"
+      "run": "! grep -Fq 'makeGhostShipMapTile' scripts/orphaned-sun-scenes.mjs && ! grep -Fq 'tiles: [' scripts/orphaned-sun-scenes.mjs"
     },
     {
       "name": "Legacy floor cleanup retained",
