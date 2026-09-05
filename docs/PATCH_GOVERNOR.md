@@ -19,6 +19,7 @@ It is intentionally not part of the Foundry module runtime. Nothing under `dev/`
 11. Immediately before merging, it verifies that `main` has not moved since production began; base-branch drift blocks the merge and requires a clean rerun.
 12. A failed run never merges. GitHub Actions reports the exact phase, operation/check, and command that failed.
 13. A successful run archives the immutable plan, patches, source commit, and run metadata under `.governor/history/`.
+14. Governed patches may not rewrite the governor engine, governor workflow, or `.governor/` state; governor changes are bootstrap/tooling changes, not project phases.
 
 ## Repository layout
 
@@ -200,7 +201,7 @@ Changes a JSON property only if its current value exactly matches the expected v
 
 ### `delete`
 
-Deletes an existing file. For important files, provide `expectedSha256` so deletion is guarded against drift.
+Deletes an existing file. `expectedSha256` is mandatory so deletion is always guarded against repository drift.
 
 ```json
 {
@@ -212,7 +213,7 @@ Deletes an existing file. For important files, provide `expectedSha256` so delet
 
 ## Checks
 
-Checks are trusted repository commands executed with the project root as the working directory. A nonzero exit status fails the phase immediately.
+Checks are trusted repository commands executed with the project root as the working directory. A nonzero exit status fails the phase immediately. Checks must be read-only: the production workflow snapshots `git status` before and after every phase check and final check and fails if validation changes the workspace.
 
 Good phase checks are narrow and attributable to that phase, for example:
 
@@ -223,7 +224,7 @@ Good phase checks are narrow and attributable to that phase, for example:
 }
 ```
 
-Final checks should validate the integrated project rather than repeat every narrow phase check.
+Final checks should validate the integrated project rather than repeat every narrow phase check. Prefer deterministic local checks that do not depend on external network state.
 
 ## CLI
 
