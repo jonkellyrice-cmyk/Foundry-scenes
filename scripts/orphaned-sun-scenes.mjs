@@ -206,19 +206,32 @@ function buildGhostShipWalls() {
 
 function makeLight(x, y, { dim, bright = 0, color, alpha = 0.35, animation = null, name }) {
   const config = {
-    dim,
-    bright,
+    // Foundry distances are scene distance units. Scale the authored values so
+    // surviving fixtures illuminate a useful portion of these cramped rooms.
+    dim: dim * 1.6,
+    bright: bright * 2,
     angle: 360,
     color,
-    alpha,
-    attenuation: 0.55,
-    luminosity: 0.35,
+    alpha: Math.max(alpha, 0.48),
+    attenuation: 0.45,
+    luminosity: 0.72,
     saturation: 0,
-    contrast: 0,
-    shadows: 0.75
+    contrast: 0.05,
+    // Wall geometry already creates the actual cast shadows. A high Background
+    // Shadows shader value was instead darkening the artwork inside the light.
+    shadows: 0,
+    darkness: { min: 0, max: 1 }
   };
   if (animation) config.animation = animation;
-  return { x, y, walls: true, vision: false, hidden: false, name, config, flags: {} };
+  return {
+    x, y, walls: true, vision: false, hidden: false, name, config,
+    flags: {
+      [MODULE_ID]: {
+        ghostShipManagedLight: true,
+        sourceVersion: GHOST_SHIP_TEMPLATE_VERSION
+      }
+    }
+  };
 }
 
 function buildGhostShipLights() {
@@ -249,6 +262,19 @@ function buildGhostShipLights() {
     makeLight(710, 725, { dim: 0.75, color: "#b92d27", alpha: 0.32, animation: emergency, name: "Emergency beacon 10" }),
     makeLight(490, 710, { dim: 0.7, color: "#b92d27", alpha: 0.30, animation: emergency, name: "Emergency beacon 11" })
   ];
+}
+
+async function replaceGhostShipManagedLights(scene) {
+  const freshLights = buildGhostShipLights();
+  const authoredNames = new Set(freshLights.map(light => light.name));
+  const existing = Array.from(scene?.lights ?? []).filter(light =>
+    Boolean(light.getFlag?.(MODULE_ID, "ghostShipManagedLight")) || authoredNames.has(light.name)
+  );
+
+  if (existing.length) {
+    await scene.deleteEmbeddedDocuments("AmbientLight", existing.map(light => light.id));
+  }
+  await scene.createEmbeddedDocuments("AmbientLight", freshLights);
 }
 
 function getGhostShipManagedFloorTiles(scene) {
@@ -350,7 +376,7 @@ export function getGhostShipSceneData() {
       // The artwork is already intrinsically dark. A near-total Foundry darkness
       // overlay made the deck disappear even for the GM. Keep the horror mood
       // while leaving enough image information to navigate and place tokens.
-      darknessLevel: 0.58,
+      darknessLevel: 0.42,
       darknessLevelLock: false,
       cycle: false,
       globalLight: { enabled: false }
@@ -383,13 +409,13 @@ export async function repairGhostShipVisibility(scene = null) {
   const usesBundledBackground = backgroundMissing || backgroundSrc === MAP_PATH;
   const sourceVersion = String(target.getFlag(MODULE_ID, "sourceVersion") ?? "");
   const darkness = Number(target.environment?.darknessLevel ?? 0);
-  const legacyBlackPreset = darkness >= 0.84;
+  const legacyOverdarkPreset = darkness > 0.45;
   const managedFloorTiles = getGhostShipManagedFloorTiles(target);
   const hasLegacyWebpReference = backgroundSrc.includes("signatory-ghost-ship.webp")
     || managedFloorTiles.some(tile => String(tile.texture?.src ?? "").includes("signatory-ghost-ship.webp"));
   const needsVersionedMapRepair = sourceVersion !== GHOST_SHIP_TEMPLATE_VERSION;
   const needsMapDeliveryRepair = usesBundledBackground || needsVersionedMapRepair || hasLegacyWebpReference;
-  if (!needsMapDeliveryRepair && !legacyBlackPreset) return target;
+  if (!needsMapDeliveryRepair && !legacyOverdarkPreset) return target;
 
   let mapSrc = backgroundSrc;
   if (needsMapDeliveryRepair) mapSrc = await provisionGhostShipMapAsset();
@@ -398,8 +424,8 @@ export async function repairGhostShipVisibility(scene = null) {
     [`flags.${MODULE_ID}.sourceVersion`]: GHOST_SHIP_TEMPLATE_VERSION
   };
   if (mapSrc) update["background.src"] = mapSrc;
-  if (legacyBlackPreset) {
-    update["environment.darknessLevel"] = 0.58;
+  if (legacyOverdarkPreset) {
+    update["environment.darknessLevel"] = 0.42;
     update["environment.darknessLevelLock"] = false;
   }
 
@@ -407,8 +433,11 @@ export async function repairGhostShipVisibility(scene = null) {
   if (managedFloorTiles.length) {
     await target.deleteEmbeddedDocuments("Tile", managedFloorTiles.map(tile => tile.id));
   }
+  if (needsVersionedMapRepair) {
+    await replaceGhostShipManagedLights(target);
+  }
 
-  ui.notifications?.info("Orphaned Sun Scenes: repaired Ghost Ship map delivery and removed the obsolete duplicate floor image.");
+  ui.notifications?.info("Orphaned Sun Scenes: repaired the Ghost Ship map layer and refreshed its dynamic lights.");
   return target;
 }
 
