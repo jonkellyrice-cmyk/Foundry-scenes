@@ -1,0 +1,47 @@
+name: Assemble bundled map asset
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.build/READY'
+
+permissions:
+  contents: write
+
+jobs:
+  assemble-map:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check assembly marker
+        id: guard
+        shell: bash
+        run: |
+          if [[ -f .build/READY ]]; then
+            echo "run_build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_build=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Decode map from staged text chunks
+        if: steps.guard.outputs.run_build == 'true'
+        shell: bash
+        run: |
+          mkdir -p assets/maps
+          cat .build/map.b64.part* | base64 --decode > assets/maps/signatory-ghost-ship.webp
+          actual="$(wc -c < assets/maps/signatory-ghost-ship.webp)"
+          test "$actual" -eq 61170
+
+      - name: Commit assembled binary asset
+        if: steps.guard.outputs.run_build == 'true'
+        shell: bash
+        run: |
+          rm -rf .build
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Assemble Signatory Ghost Ship map asset"
+          git push
