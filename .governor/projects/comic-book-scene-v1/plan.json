@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "project": "comic-book-scene-v1",
   "title": "Add Comic Book Scene maker to Orphaned Sun Foundry tools",
-  "status": "draft",
+  "status": "ready",
   "phases": [
     {
       "order": 1,
