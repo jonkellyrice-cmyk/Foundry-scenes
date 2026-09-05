@@ -1,5 +1,5 @@
 const MODULE_ID = "orphaned-sun-scenes";
-const GHOST_SHIP_TEMPLATE_VERSION = "0.3.1";
+const GHOST_SHIP_TEMPLATE_VERSION = "0.3.2";
 const GHOST_SHIP_KEY = "signatory-ghost-ship";
 const GHOST_SHIP_NAME = "Signatory Ghost Ship — Derelict Accord Vessel";
 const MAP_PATH = `modules/${MODULE_ID}/assets/maps/signatory-ghost-ship.webp`;
