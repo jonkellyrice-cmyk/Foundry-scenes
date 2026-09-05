@@ -1,5 +1,5 @@
 const MODULE_ID = "orphaned-sun-scenes";
-const MODULE_VERSION = "0.2.1";
+const GHOST_SHIP_TEMPLATE_VERSION = "0.3.1";
 const GHOST_SHIP_KEY = "signatory-ghost-ship";
 const GHOST_SHIP_NAME = "Signatory Ghost Ship — Derelict Accord Vessel";
 const MAP_PATH = `modules/${MODULE_ID}/assets/maps/signatory-ghost-ship.webp`;
@@ -203,7 +203,7 @@ function makeLight(x, y, { dim, bright = 0, color, alpha = 0.35, animation = nul
     color,
     alpha,
     attenuation: 0.55,
-    luminosity: 0.15,
+    luminosity: 0.35,
     saturation: 0,
     contrast: 0,
     shadows: 0.75
@@ -265,8 +265,11 @@ export function getGhostShipSceneData() {
     },
     tokenVision: true,
     environment: {
-      darknessLevel: 0.88,
-      darknessLevelLock: true,
+      // The artwork is already intrinsically dark. A near-total Foundry darkness
+      // overlay made the deck disappear even for the GM. Keep the horror mood
+      // while leaving enough image information to navigate and place tokens.
+      darknessLevel: 0.58,
+      darknessLevelLock: false,
       cycle: false,
       globalLight: { enabled: false }
     },
@@ -282,7 +285,7 @@ export function getGhostShipSceneData() {
     flags: {
       [MODULE_ID]: {
         sceneKey: GHOST_SHIP_KEY,
-        sourceVersion: MODULE_VERSION
+        sourceVersion: GHOST_SHIP_TEMPLATE_VERSION
       }
     }
   };
@@ -300,7 +303,7 @@ export async function ensureGhostShipScene() {
   }
 
   const scene = await Scene.create(getGhostShipSceneData());
-  await game.settings.set(MODULE_ID, "ghostShipSeedVersion", MODULE_VERSION);
+  await game.settings.set(MODULE_ID, "ghostShipSeedVersion", GHOST_SHIP_TEMPLATE_VERSION);
   ui.notifications?.info("Orphaned Sun Scenes: Signatory Ghost Ship created with walls and dynamic lighting.");
   return scene;
 }
