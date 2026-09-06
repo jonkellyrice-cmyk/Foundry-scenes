@@ -3,11 +3,14 @@ import {
   normalizeLiveSceneRegistry,
   liveScenePackageUrl,
   assertLiveScenePackage,
-  LIVE_SCENE_FEED_ROOT
+  decodeGitHubContentsJson,
+  fetchLiveSceneRegistry,
+  LIVE_SCENE_FEED_ROOT,
+  LIVE_SCENE_REGISTRY_API_URL
 } from "./live-scene-feed.mjs";
 
 const digest = "a".repeat(64);
-const registry = normalizeLiveSceneRegistry({
+const registryPayload = {
   schemaVersion: 1,
   scenes: [{
     key: "map-1",
@@ -20,10 +23,36 @@ const registry = normalizeLiveSceneRegistry({
     backgroundSha256: digest,
     updatedAt: "2026-09-06T00:00:00.000Z"
   }]
-});
+};
+const registry = normalizeLiveSceneRegistry(registryPayload);
 assert.equal(registry.scenes.length, 1);
 assert.equal(registry.scenes[0].key, "map-1");
 assert.equal(liveScenePackageUrl(registry.scenes[0]), `${LIVE_SCENE_FEED_ROOT}assets/generated-scenes/map-1.scene-package.json`);
+assert.match(LIVE_SCENE_REGISTRY_API_URL, /^https:\/\/api\.github\.com\/repos\/jonkellyrice-cmyk\/Foundry-scenes\/contents\/assets\/generated-scenes\/registry\.json\?ref=main$/);
+
+const githubContentsPayload = {
+  type: "file",
+  encoding: "base64",
+  content: Buffer.from(JSON.stringify(registryPayload), "utf8").toString("base64")
+};
+assert.deepEqual(decodeGitHubContentsJson(githubContentsPayload), registryPayload);
+assert.throws(() => decodeGitHubContentsJson({ type: "file", encoding: "none", content: "{}" }), /base64 file payload/);
+
+let requestedRegistryUrl = "";
+const fetchedRegistry = await fetchLiveSceneRegistry({
+  fetchImpl: async (url, options) => {
+    requestedRegistryUrl = String(url);
+    assert.equal(options.cache, "no-store");
+    assert.equal(options.credentials, "omit");
+    return { ok: true, status: 200, json: async () => githubContentsPayload };
+  }
+});
+assert.equal(fetchedRegistry.scenes.length, 1);
+assert.equal(fetchedRegistry.scenes[0].revision, 2);
+const requested = new URL(requestedRegistryUrl);
+assert.equal(`${requested.origin}${requested.pathname}`, "https://api.github.com/repos/jonkellyrice-cmyk/Foundry-scenes/contents/assets/generated-scenes/registry.json");
+assert.equal(requested.searchParams.get("ref"), "main");
+assert.ok(requested.searchParams.get("_osSceneFeed"));
 
 const scenePackage = {
   schemaVersion: 1,

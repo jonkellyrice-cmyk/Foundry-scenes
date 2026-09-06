@@ -1,7 +1,10 @@
 export const MODULE_ID = "orphaned-sun-scenes";
-export const LIVE_SCENE_FEED_ROOT = "https://raw.githubusercontent.com/jonkellyrice-cmyk/Foundry-scenes/main/";
+export const LIVE_SCENE_REPOSITORY = "jonkellyrice-cmyk/Foundry-scenes";
+export const LIVE_SCENE_BRANCH = "main";
+export const LIVE_SCENE_FEED_ROOT = `https://raw.githubusercontent.com/${LIVE_SCENE_REPOSITORY}/${LIVE_SCENE_BRANCH}/`;
 export const LIVE_SCENE_REGISTRY_PATH = "assets/generated-scenes/registry.json";
-export const LIVE_SCENE_REGISTRY_URL = `${LIVE_SCENE_FEED_ROOT}${LIVE_SCENE_REGISTRY_PATH}`;
+export const LIVE_SCENE_REGISTRY_API_URL = `https://api.github.com/repos/${LIVE_SCENE_REPOSITORY}/contents/${LIVE_SCENE_REGISTRY_PATH}?ref=${encodeURIComponent(LIVE_SCENE_BRANCH)}`;
+export const LIVE_SCENE_REGISTRY_URL = LIVE_SCENE_REGISTRY_API_URL;
 const BACKGROUND_SENTINEL = "__BATTLE_MAP_BACKGROUND_ASSET__";
 
 const asString = (value, fallback = "") => typeof value === "string" ? value : fallback;
@@ -103,8 +106,31 @@ async function fetchJson(url, fetchImpl = globalThis.fetch) {
   return response.json();
 }
 
-export async function fetchLiveSceneRegistry({ fetchImpl = globalThis.fetch, registryUrl = LIVE_SCENE_REGISTRY_URL } = {}) {
-  return normalizeLiveSceneRegistry(await fetchJson(registryUrl, fetchImpl));
+function decodeBase64Utf8(base64) {
+  const normalized = asString(base64).replace(/\s/g, "");
+  if (!normalized) throw new Error("GitHub live-scene registry response contained no file content.");
+  if (typeof globalThis.atob !== "function") throw new Error("Base64 decoding is unavailable in this Foundry client.");
+  const binary = globalThis.atob(normalized);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+}
+
+export function decodeGitHubContentsJson(value) {
+  if (!value || typeof value !== "object" || value.type !== "file" || value.encoding !== "base64" || typeof value.content !== "string") {
+    throw new Error("GitHub live-scene registry response is not a base64 file payload.");
+  }
+  try {
+    return JSON.parse(decodeBase64Utf8(value.content));
+  } catch (error) {
+    if (error instanceof SyntaxError) throw new Error("GitHub live-scene registry file is not valid JSON.");
+    throw error;
+  }
+}
+
+export async function fetchLiveSceneRegistry({ fetchImpl = globalThis.fetch, registryUrl = LIVE_SCENE_REGISTRY_API_URL } = {}) {
+  const currentFile = await fetchJson(registryUrl, fetchImpl);
+  return normalizeLiveSceneRegistry(decodeGitHubContentsJson(currentFile));
 }
 
 export async function fetchLiveScenePackage(entry, { fetchImpl = globalThis.fetch, feedRoot = LIVE_SCENE_FEED_ROOT } = {}) {
