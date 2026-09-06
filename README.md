@@ -1,6 +1,6 @@
 # Orphaned Sun — Foundry Scenes
 
-Foundry VTT v13 content module for prebuilt **Orphaned Sun** scenes with bundled artwork, walls, doors, fog-of-war vision, dynamic lighting, and a GM-facing Scene Library UI.
+Foundry VTT v13 GM tools for **Orphaned Sun**. The module provides a runtime Scene Library for battle maps published by the Lancer GM Kit and a Comic Book Scene Maker for sequential storytelling.
 
 ## Install on Foundry / The Forge
 
@@ -8,28 +8,58 @@ Paste this manifest URL into the module installer:
 
 `https://raw.githubusercontent.com/jonkellyrice-cmyk/Foundry-scenes/main/module.json`
 
-The manifest points to a proper GitHub Release asset whose ZIP has `module.json` at the archive root, so Foundry and The Forge can install it directly.
+The manifest points to the latest GitHub Release asset. Enable **Orphaned Sun — Foundry Scenes** in the Lancer world.
 
-Then enable **Orphaned Sun — Foundry Scenes** in the Lancer world.
+## Runtime battle-map feed
+
+Battle maps are **not bundled into module releases**. The installed module is a stable client for a live scene feed stored under `assets/generated-scenes/` on the repository's `main` branch.
+
+The Scene Library fetches:
+
+`https://raw.githubusercontent.com/jonkellyrice-cmyk/Foundry-scenes/main/assets/generated-scenes/registry.json`
+
+When a scene is published, the registry points to a scene-package JSON file containing canonical Foundry Scene data and the verified background artwork. The Foundry module downloads the package only when the GM imports or restores that scene.
+
+This separation is deliberate:
+
+- **module versions change only when module code changes;**
+- **publishing a new battle map does not require a module update or release;**
+- opening the Scene Library or pressing **Refresh live feed** discovers newly published maps;
+- **Import To World** downloads the package, verifies the embedded background SHA-256, uploads that artwork into the current Foundry world's data storage, and creates a normal editable Foundry Scene;
+- a later published revision can be pulled with **Update to Published Revision**;
+- the module never silently overwrites a world scene.
+
+The live feed currently targets Foundry generation 13 and scene-package schema version 1.
+
+## Scene Library UI
+
+For GMs, the module adds an **Orphaned Sun GM Tools** icon to Foundry's Scene Controls. The Scene Library shows every scene currently present in the live feed and whether it is already present in the current world.
+
+From the library you can refresh the live feed, import a published scene, open it, jump to Walls or Lighting, configure it normally, create an independent Working Copy, restore/update the managed copy from the published revision, or remove the managed copy from the world.
+
+Once imported, the scene is an ordinary Foundry Scene. Edit its walls, lights, doors, tokens, sounds, tiles, regions, and scene settings normally.
+
+There is no preloaded Signatory Ghost Ship scene and no first-scene auto-create behavior. The original hardcoded Ghost Ship was an early prototype and has been removed in favor of the live publishing pipeline.
+
+## Comic Book Scene Maker
+
+The GM Tools window also includes a **Comic Book Scene** tab for sequential visual storytelling. Drop or choose image files, arrange them into a page layout, and create a normal gridless Foundry Scene whose story-image Tiles start hidden from players.
+
+The current draft is stored as a world setting, so closing the GM Tools window or reloading Foundry does not discard the panel list. Uploaded files are not deleted when the draft is cleared.
 
 ## Releases
 
-Publishing is automated. Changing the versioned `module.json` on `main` runs the release workflow, validates the module package, builds `orphaned-sun-scenes.zip`, and creates or refreshes the matching GitHub Release. The stable download target used by the manifest is:
+Publishing module code is automated. Changing the versioned `module.json` on `main` runs the release workflow, validates the runtime scripts and scene-feed contract, builds `orphaned-sun-scenes.zip`, and creates or refreshes the matching GitHub Release.
+
+The release ZIP intentionally includes only module runtime assets. `assets/generated-scenes/` remains a live repository feed and is not copied into the module ZIP.
+
+Stable download target:
 
 `https://github.com/jonkellyrice-cmyk/Foundry-scenes/releases/latest/download/orphaned-sun-scenes.zip`
 
 ## Phase Patch Governor
 
-Large multi-phase development work can be run through the repository's **Phase Patch Governor** instead of being hand-applied as one large edit. It has two explicit stages:
-
-1. **Pre-production** — define the complete phase list, then draft exactly one deterministic patch per phase, in order. GitHub Actions validates each planning push and reports the next phase that still needs a patch.
-2. **Production** — once the plan is marked `ready`, the governor snapshots the sealed patch chain, starts from a fresh `main`, applies and validates every phase in sequence, runs final checks, archives the executed plan, verifies that `main` has not moved, and then fast-forward merges the validated phase commits only after everything passes.
-
-If a phase fails, the production run stops without merging and reports the failing phase, operation/check, and command. The intended repair is to change only that phase's patch on the planning branch; the governor then replays the corrected chain from a clean baseline.
-
-Planning branches use `governor-plan/<project>`. Production branches are generated automatically as `governor-run/<project>/<run-id>-<attempt>`.
-
-Full schema, lifecycle, repair procedure, and examples are in [`docs/PATCH_GOVERNOR.md`](docs/PATCH_GOVERNOR.md). The governor itself is under `dev/` and is not included in the downloadable Foundry module package.
+Large multi-phase development work can be run through the repository's **Phase Patch Governor**. Full schema, lifecycle, repair procedure, and examples are in [`docs/PATCH_GOVERNOR.md`](docs/PATCH_GOVERNOR.md).
 
 Run its regression test locally with:
 
@@ -37,72 +67,16 @@ Run its regression test locally with:
 npm run governor:test
 ```
 
-## Scene Library UI
+Run the live scene-feed contract tests with:
 
-For GMs, the module adds an **Orphaned Sun Scenes** icon at the bottom of Foundry's left-hand Scene Controls toolbar. Clicking it opens a normal movable Foundry window which can be resized, minimized, restored, and closed.
+```bash
+npm run test:scene-feed
+```
 
-The Scene Library shows every scene bundled with the module and whether that scene is already present in the current world. From the library you can:
+## GM console helper
 
-- import a bundled scene into the world;
-- open the world scene;
-- jump directly to the Walls layer;
-- jump directly to the Lighting layer;
-- open normal Foundry Scene Configuration;
-- create an independent Working Copy of the current scene;
-- restore the module-managed scene to the bundled version;
-- remove the module-managed scene from the world without removing Working Copies;
-- enable or disable automatic creation of the initial bundled scene.
-
-Once imported, the scene is an ordinary Foundry Scene. You can freely edit its walls, lights, doors, tokens, sounds, tiles, regions, and scene settings. The module does not silently overwrite those edits.
-
-## Comic Book Scene Maker
-
-The GM Tools window now includes a **Comic Book Scene** tab alongside the Scene Library. It is designed for sequential visual storytelling during a session.
-
-- Drop or choose one or more image files from the GM client. Uploads are stored through Foundry FilePicker so native Foundry and The Forge both return usable asset paths.
-- Existing Foundry paths, module asset paths, or image URLs can also be added directly.
-- Choose landscape or portrait page format and a simple comic-panel layout.
-- Reorder or remove panels while watching the live page preview.
-- **Create Comic Book Scene** creates a normal gridless Foundry Scene. The off-white page and black panel frames are locked visible Tiles; each story image is a separate unlocked Tile using cover-cropping.
-- Every story-image Tile starts **hidden from players**. Reveal the Tiles one at a time with Foundry's normal Tile visibility control as the story progresses.
-
-The current draft is stored as a world setting, so closing the GM Tools window or reloading Foundry does not discard the panel list. Uploaded files are not deleted when the draft is cleared.
-
-## Signatory Ghost Ship
-
-The initial bundled scene includes:
-
-- the 1672×941 derelict ship battle map;
-- an exterior pressure-hull wall boundary;
-- internal bulkheads and door walls;
-- several locked/blocked routes to preserve the maze structure;
-- token vision and fog exploration;
-- sparse blue/amber operational lights;
-- intermittent red emergency lights;
-- deliberately dark corridors for horror exploration.
-
-### Visibility baseline
-
-The Ghost Ship artwork is already very dark, so the Foundry environment now uses a readable horror-lighting baseline rather than stacking an almost-black darkness overlay on top of the image. The scene keeps sparse wall-constrained lights and shadows, but its initial darkness is 0.58 and is no longer locked. On update, module-managed Ghost Ship scenes still using the legacy 0.88 darkness preset are migrated automatically without replacing their walls, doors, tokens, or other edits. A missing bundled background path is also repaired automatically.
-
-The active GM still receives the Signatory Ghost Ship automatically the first time the module is enabled unless that setting is disabled. This preserves the first-release behavior while future scenes are imported intentionally through the Scene Library.
-
-### GM console helpers
-
-Open the Scene Library from the console:
+Open the GM Tools window from the console:
 
 ```js
 await game.modules.get("orphaned-sun-scenes").api.openSceneLibrary();
-```
-
-If you intentionally want to delete and recreate the bundled Ghost Ship from the module definition:
-
-```js
-await game.modules.get("orphaned-sun-scenes").api.rebuildGhostShipScene();
-```
-
-To create it if it is missing:
-
-```js
-await game.modules.get("orphaned-sun-scenes").api.ensureGhostShipScene();
 ```

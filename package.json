@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "governor:validate": "node dev/patch-governor.mjs validate-workspace",
-    "governor:test": "node dev/patch-governor.test.mjs"
+    "governor:test": "node dev/patch-governor.test.mjs",
+    "test:scene-feed": "node scripts/live-scene-feed.test.mjs"
   }
 }
