@@ -21,14 +21,6 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Install image transcoder
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg
-          ffmpeg -version | head -n 1
-
       - name: Read and validate module manifest
         id: manifest
         shell: bash
@@ -39,57 +31,60 @@ jobs:
           test -n "$VERSION"
           test "$VERSION" != "null"
           test "$MODULE_ID" = "orphaned-sun-scenes"
-          test -f assets/maps/signatory-ghost-ship.webp
-          test -f scripts/orphaned-sun-scenes.mjs
+          test -f scripts/live-scene-feed.mjs
           test -f scripts/scene-library.mjs
+          test -f scripts/comic-book-maker.mjs
           test -f styles/scene-library.css
+          test -f styles/live-scene-feed.css
           test -f templates/scene-library.hbs
-          command -v ffmpeg >/dev/null
+          test -f assets/generated-scenes/registry.json
+          jq -e '.schemaVersion == 1 and (.scenes | type == "array")' assets/generated-scenes/registry.json >/dev/null
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Validate runtime scripts and scene-feed contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check scripts/live-scene-feed.mjs
+          node --check scripts/scene-library.mjs
+          node --check scripts/comic-book-maker.mjs
+          npm run test:scene-feed
 
       - name: Build Foundry-compatible module ZIP
         shell: bash
         run: |
           set -euo pipefail
           rm -rf dist
-          mkdir -p dist/package
+          mkdir -p dist/package/assets dist/package/scripts dist/package/styles dist/package/templates
           cp module.json README.md dist/package/
-          cp -R assets scripts styles templates dist/package/
-
-          # The source WebP is valid to Pillow/ImageMagick but Chromium/PIXI has
-          # rejected this specific encode with InvalidStateError. Transcode the
-          # release copy to a conventional JPEG so Foundry and Forge can decode it.
-          ffmpeg -hide_banner -loglevel error -y \
-            -i dist/package/assets/maps/signatory-ghost-ship.webp \
-            -q:v 2 \
-            dist/package/assets/maps/signatory-ghost-ship.jpg
-          test -s dist/package/assets/maps/signatory-ghost-ship.jpg
-
+          cp -R assets/comic dist/package/assets/comic
+          cp scripts/live-scene-feed.mjs scripts/scene-library.mjs scripts/comic-book-maker.mjs dist/package/scripts/
+          cp styles/scene-library.css styles/live-scene-feed.css dist/package/styles/
+          cp templates/scene-library.hbs dist/package/templates/
           (
             cd dist/package
-            zip -r ../orphaned-sun-scenes.zip module.json README.md assets scripts styles templates \
-              -x '*.DS_Store' -x '__MACOSX/*'
+            zip -r ../orphaned-sun-scenes.zip module.json README.md assets scripts styles templates -x '*.DS_Store' -x '__MACOSX/*'
           )
 
-      - name: Validate ZIP root and manifest
+      - name: Validate ZIP root and runtime contents
         shell: bash
         run: |
           set -euo pipefail
           unzip -Z1 dist/orphaned-sun-scenes.zip | grep -qx 'module.json'
           ! unzip -Z1 dist/orphaned-sun-scenes.zip | grep -q '^Foundry-scenes/'
+          ! unzip -Z1 dist/orphaned-sun-scenes.zip | grep -q '^assets/generated-scenes/'
+          ! unzip -Z1 dist/orphaned-sun-scenes.zip | grep -q 'signatory-ghost-ship'
           rm -rf dist/verify
           mkdir -p dist/verify
           unzip -q dist/orphaned-sun-scenes.zip -d dist/verify
           test "$(jq -r '.id' dist/verify/module.json)" = "orphaned-sun-scenes"
           test "$(jq -r '.version' dist/verify/module.json)" = "${{ steps.manifest.outputs.version }}"
-          test -s dist/verify/assets/maps/signatory-ghost-ship.webp
-          test -s dist/verify/assets/maps/signatory-ghost-ship.jpg
-          ffmpeg -hide_banner -loglevel error \
-            -i dist/verify/assets/maps/signatory-ghost-ship.jpg \
-            -f null -
-          test -s dist/verify/scripts/orphaned-sun-scenes.mjs
+          test -s dist/verify/scripts/live-scene-feed.mjs
           test -s dist/verify/scripts/scene-library.mjs
+          test -s dist/verify/scripts/comic-book-maker.mjs
+          node --check dist/verify/scripts/live-scene-feed.mjs
+          node --check dist/verify/scripts/scene-library.mjs
 
       - name: Create or update GitHub Release
         env:
@@ -99,16 +94,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          NOTES="Foundry VTT v13 Orphaned Sun GM Tools with a runtime live battle-map Scene Library. Published scenes are fetched independently of module releases."
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/orphaned-sun-scenes.zip --clobber
-            gh release edit "$TAG" \
-              --title "Orphaned Sun — Foundry Scenes $VERSION" \
-              --notes "Foundry VTT v13 module package for Orphaned Sun scenes. Install using the manifest URL from the repository README." \
-              --latest
+            gh release edit "$TAG" --title "Orphaned Sun — Foundry Scenes $VERSION" --notes "$NOTES" --latest
           else
-            gh release create "$TAG" dist/orphaned-sun-scenes.zip \
-              --target "$GITHUB_SHA" \
-              --title "Orphaned Sun — Foundry Scenes $VERSION" \
-              --notes "Foundry VTT v13 module package for Orphaned Sun scenes. Install using the manifest URL from the repository README." \
-              --latest
+            gh release create "$TAG" dist/orphaned-sun-scenes.zip --target "$GITHUB_SHA" --title "Orphaned Sun — Foundry Scenes $VERSION" --notes "$NOTES" --latest
           fi
