@@ -1,8 +1,11 @@
 import {
-  ensureGhostShipScene,
-  rebuildGhostShipScene,
-  getGhostShipSceneData
-} from "./orphaned-sun-scenes.mjs";
+  fetchLiveSceneRegistry,
+  findImportedLiveScene,
+  importLiveScene,
+  liveSceneDescriptor,
+  restoreLiveScene,
+  MODULE_ID
+} from "./live-scene-feed.mjs";
 import {
   loadComicDraft,
   saveComicDraft,
@@ -14,97 +17,27 @@ import {
   clearComicDraft,
   createComicBookScene
 } from "./comic-book-maker.mjs";
-import { collectSceneDiagnostics, collectArtifactPointProbe, diagnosticsClipboardText } from "./scene-diagnostics.mjs";
 
-const MODULE_ID = "orphaned-sun-scenes";
 const APP_ID = `${MODULE_ID}-scene-library`;
 const TOOLBAR_CONTROL = `${MODULE_ID}-control`;
-const GHOST_SHIP_KEY = "signatory-ghost-ship";
-
-function diagnosticProbeStorageKey() {
-  const worldId = game.world?.id ?? "world";
-  const userId = game.user?.id ?? "user";
-  return `${MODULE_ID}:diagnostic-artifact-probe:${worldId}:${userId}`;
-}
-
-function loadDiagnosticPointProbe() {
-  try {
-    const raw = globalThis.sessionStorage?.getItem(diagnosticProbeStorageKey());
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-function saveDiagnosticPointProbe(probe) {
-  try {
-    if (!probe) {
-      globalThis.sessionStorage?.removeItem(diagnosticProbeStorageKey());
-      return;
-    }
-    globalThis.sessionStorage?.setItem(diagnosticProbeStorageKey(), JSON.stringify(probe));
-  } catch (error) {
-    console.warn(`${MODULE_ID} | Could not persist diagnostic artifact probe`, error);
-  }
-}
-
 const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;
-
-const SCENE_LIBRARY = new Map([
-  [GHOST_SHIP_KEY, {
-    key: GHOST_SHIP_KEY,
-    title: "Signatory Ghost Ship",
-    subtitle: "Derelict Accord Vessel",
-    description: "A pre-walled horror exploration scene with doors, fog-of-war, and sparse wall-constrained dynamic lighting.",
-    build: getGhostShipSceneData,
-    ensure: ensureGhostShipScene,
-    rebuild: rebuildGhostShipScene,
-    tags: ["Ghost Ship", "Exploration", "Horror"]
-  }]
-]);
 
 function moduleVersion() {
   return game.modules.get(MODULE_ID)?.version ?? "unknown";
 }
 
-function findManagedScene(key) {
-  return game.scenes.find(scene => scene.getFlag(MODULE_ID, "sceneKey") === key) ?? null;
+function keyForTarget(target) {
+  return target.closest("[data-scene-key]")?.dataset.sceneKey ?? "";
 }
 
-function sceneDescriptor(entry) {
-  const template = entry.build();
-  const scene = findManagedScene(entry.key);
-  const sourceWalls = scene ? Array.from(scene.walls ?? []) : (template.walls ?? []);
-  const sourceLights = scene ? Array.from(scene.lights ?? []) : (template.lights ?? []);
-  const doors = sourceWalls.filter(wall => Number(wall.door ?? wall?.toObject?.().door ?? 0) > 0).length;
-
-  return {
-    key: entry.key,
-    title: entry.title,
-    subtitle: entry.subtitle,
-    description: entry.description,
-    preview: template.background?.src ?? "",
-    tags: entry.tags,
-    installed: Boolean(scene),
-    worldId: scene?.id ?? null,
-    worldName: scene?.name ?? null,
-    sourceVersion: scene?.getFlag(MODULE_ID, "sourceVersion") ?? template.flags?.[MODULE_ID]?.sourceVersion ?? moduleVersion(),
-    wallCount: sourceWalls.length,
-    lightCount: sourceLights.length,
-    doorCount: doors
-  };
-}
-
-function entryForTarget(target) {
-  const key = target.closest("[data-scene-key]")?.dataset.sceneKey;
-  return key ? SCENE_LIBRARY.get(key) ?? null : null;
+function entryForTarget(app, target) {
+  const key = keyForTarget(target);
+  return key ? app.liveEntries.get(key) ?? null : null;
 }
 
 function sceneForTarget(target) {
-  const entry = entryForTarget(target);
-  return entry ? findManagedScene(entry.key) : null;
+  const key = keyForTarget(target);
+  return key ? findImportedLiveScene(key) : null;
 }
 
 function uniqueSceneName(baseName) {
@@ -116,12 +49,7 @@ function uniqueSceneName(baseName) {
 }
 
 async function confirmAction(title, content) {
-  return DialogV2.confirm({
-    window: { title },
-    content,
-    rejectClose: false,
-    modal: true
-  });
+  return DialogV2.confirm({ window: { title }, content, rejectClose: false, modal: true });
 }
 
 async function activateSceneLayer(scene, control) {
@@ -129,13 +57,21 @@ async function activateSceneLayer(scene, control) {
   await ui.controls.activate({ control });
 }
 
+function formatFeedTimestamp(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
+}
+
 export class OrphanedSunSceneLibrary extends HandlebarsApplicationMixin(ApplicationV2) {
   constructor(options = {}) {
     super(options);
     this.activeTab = "scenes";
     this.comicDraft = loadComicDraft();
-    this.diagnosticPointProbe = loadDiagnosticPointProbe();
-    this._diagnosticPickCleanup = null;
+    this.liveEntries = new Map();
+    this.feedLoaded = false;
+    this.feedError = "";
+    this.feedUpdatedAt = "";
   }
 
   static DEFAULT_OPTIONS = {
@@ -160,13 +96,8 @@ export class OrphanedSunSceneLibrary extends HandlebarsApplicationMixin(Applicat
       duplicateScene: OrphanedSunSceneLibrary.duplicateScene,
       restoreScene: OrphanedSunSceneLibrary.restoreScene,
       removeScene: OrphanedSunSceneLibrary.removeScene,
-      toggleAutoCreate: OrphanedSunSceneLibrary.toggleAutoCreate,
       refresh: OrphanedSunSceneLibrary.refresh,
       showScenes: OrphanedSunSceneLibrary.showScenes,
-      showDiagnostics: OrphanedSunSceneLibrary.showDiagnostics,
-      diagnosticsRefresh: OrphanedSunSceneLibrary.diagnosticsRefresh,
-      diagnosticsPickPoint: OrphanedSunSceneLibrary.diagnosticsPickPoint,
-      diagnosticsCopy: OrphanedSunSceneLibrary.diagnosticsCopy,
       showComic: OrphanedSunSceneLibrary.showComic,
       comicChooseFiles: OrphanedSunSceneLibrary.comicChooseFiles,
       comicAddPath: OrphanedSunSceneLibrary.comicAddPath,
@@ -179,31 +110,45 @@ export class OrphanedSunSceneLibrary extends HandlebarsApplicationMixin(Applicat
   };
 
   static PARTS = {
-    body: {
-      template: `modules/${MODULE_ID}/templates/scene-library.hbs`
-    }
+    body: { template: `modules/${MODULE_ID}/templates/scene-library.hbs` }
   };
+
+  async _reloadLiveEntries({ notify = false } = {}) {
+    try {
+      const registry = await fetchLiveSceneRegistry();
+      this.liveEntries = new Map(registry.scenes.map(entry => [entry.key, entry]));
+      this.feedLoaded = true;
+      this.feedError = "";
+      this.feedUpdatedAt = registry.scenes.map(entry => entry.updatedAt).filter(Boolean).sort().at(-1) ?? "";
+      if (notify) ui.notifications?.info(`Scene feed refreshed: ${registry.scenes.length} published scene${registry.scenes.length === 1 ? "" : "s"}.`);
+      return registry;
+    } catch (error) {
+      this.feedLoaded = true;
+      this.feedError = error?.message ?? String(error);
+      console.error(`${MODULE_ID} | Live scene feed refresh failed`, error);
+      if (notify) ui.notifications?.warn(`Could not refresh the live scene feed: ${this.feedError}`);
+      return { schemaVersion: 1, scenes: Array.from(this.liveEntries.values()) };
+    }
+  }
 
   async _prepareContext(options) {
     const context = await super._prepareContext(options);
-    const scenes = Array.from(SCENE_LIBRARY.values()).map(sceneDescriptor);
-    const diagnostics = this.activeTab === "diagnostics"
-      ? await collectSceneDiagnostics(findManagedScene(GHOST_SHIP_KEY), {
-          pointProbe: this.diagnosticPointProbe?.dom ?? null,
-          canvasPointProbe: this.diagnosticPointProbe?.canvas ?? null
-        })
-      : null;
+    if (this.activeTab === "scenes" && !this.feedLoaded) await this._reloadLiveEntries();
+    const scenes = Array.from(this.liveEntries.values())
+      .sort((a, b) => String(a.name).localeCompare(String(b.name)))
+      .map(liveSceneDescriptor);
     return {
       ...context,
       moduleVersion: moduleVersion(),
-      autoCreate: game.settings.get(MODULE_ID, "autoCreateGhostShip"),
       sceneCount: scenes.length,
       installedCount: scenes.filter(scene => scene.installed).length,
       scenes,
+      feedLoaded: this.feedLoaded,
+      feedError: this.feedError,
+      feedHealthy: this.feedLoaded && !this.feedError,
+      feedUpdatedAt: formatFeedTimestamp(this.feedUpdatedAt),
       tabScenes: this.activeTab === "scenes",
-      tabDiagnostics: this.activeTab === "diagnostics",
       tabComic: this.activeTab === "comic",
-      diagnostics,
       comic: comicContext(this.comicDraft)
     };
   }
@@ -211,7 +156,6 @@ export class OrphanedSunSceneLibrary extends HandlebarsApplicationMixin(Applicat
   async _onRender(context, options) {
     await super._onRender?.(context, options);
     if (this.activeTab !== "comic") return;
-
     const title = this.element.querySelector('[name="comicTitle"]');
     const layout = this.element.querySelector('[name="comicLayout"]');
     const orientation = this.element.querySelector('[name="comicOrientation"]');
@@ -261,82 +205,120 @@ export class OrphanedSunSceneLibrary extends HandlebarsApplicationMixin(Applicat
 
   static async showScenes() {
     this.activeTab = "scenes";
+    if (!this.feedLoaded) await this._reloadLiveEntries();
     await this.render({ force: true });
-  }
-
-  static async showDiagnostics() {
-    this.activeTab = "diagnostics";
-    await this.render({ force: true });
-  }
-
-  static async diagnosticsRefresh() {
-    this.activeTab = "diagnostics";
-    await this.render({ force: true });
-  }
-
-  static async diagnosticsPickPoint() {
-    this.activeTab = "diagnostics";
-    this._diagnosticPickCleanup?.();
-
-    const body = document.body;
-    body?.classList.add("os-diagnostic-pick-mode");
-    ui.notifications?.info("Artifact picker armed. Click directly on the green strip; press Escape to cancel.");
-
-    let active = true;
-    const cleanup = () => {
-      if (!active) return;
-      active = false;
-      body?.classList.remove("os-diagnostic-pick-mode");
-      document.removeEventListener("pointerdown", handlePoint, true);
-      document.removeEventListener("keydown", handleKey, true);
-      this._diagnosticPickCleanup = null;
-    };
-
-    const handlePoint = async event => {
-      if (this.element?.contains(event.target)) return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      cleanup();
-      this.diagnosticPointProbe = collectArtifactPointProbe(event.clientX, event.clientY);
-      saveDiagnosticPointProbe(this.diagnosticPointProbe);
-      const domPoint = this.diagnosticPointProbe.dom;
-      const canvasHits = this.diagnosticPointProbe.canvas?.hitCount ?? 0;
-      ui.notifications?.info(`Captured artifact point at x${domPoint.x}, y${domPoint.y} with ${canvasHits} canvas/PIXI render hit(s).`);
-      await this.render({ force: true });
-    };
-
-    const handleKey = event => {
-      if (event.key !== "Escape") return;
-      cleanup();
-      ui.notifications?.info("Artifact picker cancelled.");
-    };
-
-    this._diagnosticPickCleanup = cleanup;
-    setTimeout(() => {
-      if (!active) return;
-      document.addEventListener("pointerdown", handlePoint, true);
-      document.addEventListener("keydown", handleKey, true);
-    }, 0);
-  }
-
-  static async diagnosticsCopy() {
-    try {
-      const probe = this.diagnosticPointProbe ?? loadDiagnosticPointProbe();
-      const diagnostics = await collectSceneDiagnostics(findManagedScene(GHOST_SHIP_KEY), {
-        pointProbe: probe?.dom ?? null,
-        canvasPointProbe: probe?.canvas ?? null
-      });
-      await navigator.clipboard.writeText(diagnosticsClipboardText(diagnostics));
-      ui.notifications?.info("Scene diagnostics copied to clipboard.");
-    } catch (error) {
-      console.error(`${MODULE_ID} | Failed to copy diagnostics`, error);
-      ui.notifications?.warn(`Could not copy diagnostics: ${error?.message ?? error}`);
-    }
   }
 
   static async showComic() {
     this.activeTab = "comic";
     this.comicDraft = loadComicDraft();
+    await this.render({ force: true });
+  }
+
+  static async refresh() {
+    await this._reloadLiveEntries({ notify: true });
+    await this.render({ force: true });
+  }
+
+  static async importScene(_event, target) {
+    const entry = entryForTarget(this, target);
+    if (!entry) return;
+    const existing = findImportedLiveScene(entry.key);
+    if (existing) {
+      ui.notifications?.info(`${entry.name} is already in this world.`);
+      await this.render({ force: true });
+      return;
+    }
+    try {
+      ui.notifications?.info(`Importing ${entry.name} from the live scene feed…`);
+      const scene = await importLiveScene(entry);
+      await scene.view();
+      ui.notifications?.info(`${entry.name} imported into this world.`);
+      await this.render({ force: true });
+    } catch (error) {
+      console.error(`${MODULE_ID} | Live scene import failed`, error);
+      ui.notifications?.error(`Could not import ${entry.name}: ${error?.message ?? error}`);
+    }
+  }
+
+  static async openScene(_event, target) {
+    const scene = sceneForTarget(target);
+    if (!scene) return ui.notifications?.warn("Import this scene before opening it.");
+    await scene.view();
+  }
+
+  static async configureScene(_event, target) {
+    const scene = sceneForTarget(target);
+    if (!scene) return ui.notifications?.warn("Import this scene before configuring it.");
+    await scene.sheet.render({ force: true });
+  }
+
+  static async editWalls(_event, target) {
+    const scene = sceneForTarget(target);
+    if (!scene) return ui.notifications?.warn("Import this scene before editing its walls.");
+    await activateSceneLayer(scene, "walls");
+  }
+
+  static async editLighting(_event, target) {
+    const scene = sceneForTarget(target);
+    if (!scene) return ui.notifications?.warn("Import this scene before editing its lighting.");
+    await activateSceneLayer(scene, "lighting");
+  }
+
+  static async duplicateScene(_event, target) {
+    const entry = entryForTarget(this, target);
+    const scene = sceneForTarget(target);
+    if (!entry || !scene) return ui.notifications?.warn("Import this scene before creating a working copy.");
+    const data = scene.toObject();
+    delete data._id;
+    data.name = uniqueSceneName(`${scene.name} — Working Copy`);
+    data.active = false;
+    data.navigation = true;
+    data.flags ??= {};
+    data.flags[MODULE_ID] = {
+      ...(data.flags[MODULE_ID] ?? {}),
+      liveScene: false,
+      templateKey: entry.key,
+      workingCopy: true
+    };
+    const copy = await Scene.create(data);
+    ui.notifications?.info(`Created editable working copy: ${copy.name}`);
+    await copy.view();
+    await this.render({ force: true });
+  }
+
+  static async restoreScene(_event, target) {
+    const entry = entryForTarget(this, target);
+    const scene = sceneForTarget(target);
+    if (!entry || !scene) return;
+    const currentRevision = Number(scene.getFlag(MODULE_ID, "sourceRevision") ?? 0);
+    const proceed = await confirmAction(
+      `${currentRevision < entry.revision ? "Update" : "Restore"} ${entry.name}?`,
+      `<p>This deletes the managed world copy and re-imports revision ${entry.revision} from the live scene feed.</p><p><strong>Edits made directly to the managed scene will be lost.</strong> Create a Working Copy first if you want to preserve them.</p>`
+    );
+    if (!proceed) return;
+    try {
+      const restored = await restoreLiveScene(entry);
+      await restored.view();
+      ui.notifications?.info(`${entry.name} restored from published revision ${entry.revision}.`);
+      await this.render({ force: true });
+    } catch (error) {
+      console.error(`${MODULE_ID} | Live scene restore failed`, error);
+      ui.notifications?.error(`Could not restore ${entry.name}: ${error?.message ?? error}`);
+    }
+  }
+
+  static async removeScene(_event, target) {
+    const entry = entryForTarget(this, target);
+    const scene = sceneForTarget(target);
+    if (!entry || !scene) return;
+    const proceed = await confirmAction(
+      `Remove ${entry.name} from this world?`,
+      "<p>This removes only the managed world copy. The published scene remains in the live Scene Library and can be imported again later.</p><p>Independent Working Copies are not removed.</p>"
+    );
+    if (!proceed) return;
+    await scene.delete();
+    ui.notifications?.info(`${entry.name} removed from this world.`);
     await this.render({ force: true });
   }
 
@@ -377,10 +359,7 @@ export class OrphanedSunSceneLibrary extends HandlebarsApplicationMixin(Applicat
   }
 
   static async comicClear() {
-    const proceed = await confirmAction(
-      "Clear comic draft?",
-      "<p>This clears the current panel list and layout choices. Uploaded image files remain in Foundry storage.</p>"
-    );
+    const proceed = await confirmAction("Clear comic draft?", "<p>This clears the current panel list and layout choices. Uploaded image files remain in Foundry storage.</p>");
     if (!proceed) return;
     this.comicDraft = await clearComicDraft();
     await this.render({ force: true });
@@ -396,125 +375,6 @@ export class OrphanedSunSceneLibrary extends HandlebarsApplicationMixin(Applicat
       ui.notifications?.error(`Comic scene export failed: ${error.message}`);
     }
   }
-
-  static async importScene(_event, target) {
-    const entry = entryForTarget(target);
-    if (!entry) return;
-    const existing = findManagedScene(entry.key);
-    if (existing) {
-      ui.notifications?.info(`${entry.title} is already in this world.`);
-      await this.render({ force: true });
-      return;
-    }
-    const scene = await entry.ensure();
-    await scene.view();
-    await this.render({ force: true });
-  }
-
-  static async openScene(_event, target) {
-    const scene = sceneForTarget(target);
-    if (!scene) {
-      ui.notifications?.warn("Import this scene before opening it.");
-      return;
-    }
-    await scene.view();
-  }
-
-  static async configureScene(_event, target) {
-    const scene = sceneForTarget(target);
-    if (!scene) {
-      ui.notifications?.warn("Import this scene before configuring it.");
-      return;
-    }
-    await scene.sheet.render({ force: true });
-  }
-
-  static async editWalls(_event, target) {
-    const scene = sceneForTarget(target);
-    if (!scene) {
-      ui.notifications?.warn("Import this scene before editing its walls.");
-      return;
-    }
-    await activateSceneLayer(scene, "walls");
-  }
-
-  static async editLighting(_event, target) {
-    const scene = sceneForTarget(target);
-    if (!scene) {
-      ui.notifications?.warn("Import this scene before editing its lighting.");
-      return;
-    }
-    await activateSceneLayer(scene, "lighting");
-  }
-
-  static async duplicateScene(_event, target) {
-    const entry = entryForTarget(target);
-    const scene = sceneForTarget(target);
-    if (!entry || !scene) {
-      ui.notifications?.warn("Import this scene before creating a working copy.");
-      return;
-    }
-
-    const data = scene.toObject();
-    delete data._id;
-    data.name = uniqueSceneName(`${scene.name} — Working Copy`);
-    data.active = false;
-    data.navigation = true;
-    data.flags ??= {};
-    data.flags[MODULE_ID] = {
-      templateKey: entry.key,
-      sourceVersion: scene.getFlag(MODULE_ID, "sourceVersion") ?? moduleVersion(),
-      workingCopy: true
-    };
-
-    const copy = await Scene.create(data);
-    ui.notifications?.info(`Created editable working copy: ${copy.name}`);
-    await copy.view();
-    await this.render({ force: true });
-  }
-
-  static async restoreScene(_event, target) {
-    const entry = entryForTarget(target);
-    const scene = sceneForTarget(target);
-    if (!entry || !scene) return;
-
-    const proceed = await confirmAction(
-      `Restore ${entry.title}?`,
-      `<p>This will delete the module-managed world copy and recreate it from the bundled template.</p><p><strong>Any edits made directly to that managed scene will be lost.</strong> Create a Working Copy first if you want to preserve them.</p>`
-    );
-    if (!proceed) return;
-
-    const restored = await entry.rebuild();
-    await restored.view();
-    await this.render({ force: true });
-  }
-
-  static async removeScene(_event, target) {
-    const entry = entryForTarget(target);
-    const scene = sceneForTarget(target);
-    if (!entry || !scene) return;
-
-    const proceed = await confirmAction(
-      `Remove ${entry.title} from this world?`,
-      `<p>This removes only the module-managed scene from this world. The bundled template remains available in the Scene Library and can be imported again later.</p><p>Independent Working Copies are not removed.</p>`
-    );
-    if (!proceed) return;
-
-    await scene.delete();
-    ui.notifications?.info(`${entry.title} removed from this world.`);
-    await this.render({ force: true });
-  }
-
-  static async toggleAutoCreate() {
-    const current = game.settings.get(MODULE_ID, "autoCreateGhostShip");
-    await game.settings.set(MODULE_ID, "autoCreateGhostShip", !current);
-    ui.notifications?.info(`Automatic first-scene creation ${current ? "disabled" : "enabled"}.`);
-    await this.render({ force: true });
-  }
-
-  static async refresh() {
-    await this.render({ force: true });
-  }
 }
 
 export async function openSceneLibrary() {
@@ -522,15 +382,14 @@ export async function openSceneLibrary() {
     ui.notifications?.warn("Only a GM can manage Orphaned Sun scenes.");
     return null;
   }
-
   const existing = foundry.applications.instances.get(APP_ID);
   if (existing) {
     if (existing.minimized) await existing.maximize();
     existing.bringToFront();
+    await existing._reloadLiveEntries();
     await existing.render({ force: true });
     return existing;
   }
-
   const app = new OrphanedSunSceneLibrary();
   await app.render({ force: true });
   return app;
@@ -538,7 +397,6 @@ export async function openSceneLibrary() {
 
 Hooks.on("getSceneControlButtons", controls => {
   if (!game.user?.isGM) return;
-
   const maxOrder = Math.max(0, ...Object.values(controls).map(control => Number(control.order ?? 0)));
   controls[TOOLBAR_CONTROL] = {
     name: TOOLBAR_CONTROL,
@@ -558,9 +416,7 @@ Hooks.on("getSceneControlButtons", controls => {
         onChange: () => openSceneLibrary()
       }
     },
-    onChange: (_event, active) => {
-      if (active) openSceneLibrary();
-    }
+    onChange: (_event, active) => { if (active) openSceneLibrary(); }
   };
 });
 
@@ -572,7 +428,8 @@ Hooks.once("ready", () => {
     openSceneLibrary,
     openGMTools: openSceneLibrary,
     OrphanedSunSceneLibrary,
-    sceneLibrary: SCENE_LIBRARY,
+    fetchLiveSceneRegistry,
+    importLiveScene,
     createComicBookScene
   });
 });
