@@ -1,4 +1,26 @@
 {
   "schemaVersion": 1,
-  "scenes": []
+  "scenes": [
+    {
+      "key": "signatory-ghost-ship-canonical",
+      "name": "Signatory Ghost Ship — Clean-Room Canonical Draft",
+      "campaignId": "orphaned-sun",
+      "revision": 4,
+      "packagePath": "assets/generated-scenes/signatory-ghost-ship-canonical.scene-package.json",
+      "packageSchemaVersion": 1,
+      "foundryGeneration": 13,
+      "backgroundSha256": "7c228a8dd7e464ee22f3b51290d8ad4af54b7cc857d4f0faff0b7860936abcc4",
+      "updatedAt": "2026-09-06T04:44:57.507Z",
+      "subtitle": "Revision 4 · orphaned-sun",
+      "description": "Published from the Lancer GM Kit live battle-map feed.",
+      "tags": [
+        "Live",
+        "Battle Map"
+      ],
+      "wallCount": 69,
+      "doorCount": 9,
+      "lightCount": 20,
+      "previewUrl": "https://raw.githubusercontent.com/jonkellyrice-cmyk/Foundry-scenes/main/assets/generated-scenes/previews/signatory-ghost-ship-canonical.png"
+    }
+  ]
 }
