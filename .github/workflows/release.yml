@@ -34,6 +34,7 @@ jobs:
           test "$(jq -r '.socket' module.json)" = "true"
           test -f scripts/battlefield-dynamics-contract.mjs
           test -f scripts/battlefield-dynamics-diagnostics.mjs
+          test -f scripts/battlefield-dynamics-spatial.mjs
           test -f scripts/battlefield-dynamics-runtime.mjs
           test -f scripts/live-scene-feed.mjs
           test -f scripts/scene-library.mjs
@@ -46,6 +47,8 @@ jobs:
           grep -Fq 'BATTLEFIELD_DYNAMICS_RUNTIME_FLAG = "battlefieldDynamicsRuntime"' scripts/battlefield-dynamics-runtime.mjs
           grep -Fq 'BATTLEFIELD_DYNAMICS_RUNTIME_PERSISTENCE = "scene-flag-v1"' scripts/battlefield-dynamics-runtime.mjs
           grep -Fq 'BATTLEFIELD_DYNAMICS_DIAGNOSTICS_VERSION = 1' scripts/battlefield-dynamics-diagnostics.mjs
+          grep -Fq 'BATTLEFIELD_DYNAMICS_SPATIAL_VERSION = 1' scripts/battlefield-dynamics-spatial.mjs
+          grep -Fq 'BATTLEFIELD_DYNAMICS_PROJECTION_OWNERSHIP = "battlefield-dynamics-disposable-region"' scripts/battlefield-dynamics-spatial.mjs
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
@@ -55,6 +58,7 @@ jobs:
           set -euo pipefail
           node --check scripts/battlefield-dynamics-contract.mjs
           node --check scripts/battlefield-dynamics-diagnostics.mjs
+          node --check scripts/battlefield-dynamics-spatial.mjs
           node --check scripts/battlefield-dynamics-runtime.mjs
           node --check scripts/live-scene-feed.mjs
           node --check scripts/scene-library.mjs
@@ -69,7 +73,7 @@ jobs:
           mkdir -p dist/package/assets dist/package/scripts dist/package/styles dist/package/templates
           cp module.json README.md dist/package/
           cp -R assets/comic dist/package/assets/comic
-          cp scripts/battlefield-dynamics-contract.mjs scripts/battlefield-dynamics-diagnostics.mjs scripts/battlefield-dynamics-runtime.mjs scripts/live-scene-feed.mjs scripts/scene-library.mjs scripts/comic-book-maker.mjs dist/package/scripts/
+          cp scripts/battlefield-dynamics-contract.mjs scripts/battlefield-dynamics-diagnostics.mjs scripts/battlefield-dynamics-spatial.mjs scripts/battlefield-dynamics-runtime.mjs scripts/live-scene-feed.mjs scripts/scene-library.mjs scripts/comic-book-maker.mjs dist/package/scripts/
           cp styles/scene-library.css styles/live-scene-feed.css dist/package/styles/
           cp templates/scene-library.hbs dist/package/templates/
           (
@@ -93,6 +97,7 @@ jobs:
           test "$(jq -r '.socket' dist/verify/module.json)" = "true"
           test -s dist/verify/scripts/battlefield-dynamics-contract.mjs
           test -s dist/verify/scripts/battlefield-dynamics-diagnostics.mjs
+          test -s dist/verify/scripts/battlefield-dynamics-spatial.mjs
           test -s dist/verify/scripts/battlefield-dynamics-runtime.mjs
           test -s dist/verify/scripts/live-scene-feed.mjs
           test -s dist/verify/scripts/scene-library.mjs
@@ -100,8 +105,11 @@ jobs:
           grep -Fq 'BATTLEFIELD_DYNAMICS_RUNTIME_FLAG = "battlefieldDynamicsRuntime"' dist/verify/scripts/battlefield-dynamics-runtime.mjs
           grep -Fq 'BATTLEFIELD_DYNAMICS_RUNTIME_PERSISTENCE = "scene-flag-v1"' dist/verify/scripts/battlefield-dynamics-runtime.mjs
           grep -Fq 'BATTLEFIELD_DYNAMICS_DIAGNOSTICS_VERSION = 1' dist/verify/scripts/battlefield-dynamics-diagnostics.mjs
+          grep -Fq 'BATTLEFIELD_DYNAMICS_SPATIAL_VERSION = 1' dist/verify/scripts/battlefield-dynamics-spatial.mjs
+          grep -Fq 'BATTLEFIELD_DYNAMICS_PROJECTION_OWNERSHIP = "battlefield-dynamics-disposable-region"' dist/verify/scripts/battlefield-dynamics-spatial.mjs
           node --check dist/verify/scripts/battlefield-dynamics-contract.mjs
           node --check dist/verify/scripts/battlefield-dynamics-diagnostics.mjs
+          node --check dist/verify/scripts/battlefield-dynamics-spatial.mjs
           node --check dist/verify/scripts/battlefield-dynamics-runtime.mjs
           node --check dist/verify/scripts/live-scene-feed.mjs
           node --check dist/verify/scripts/scene-library.mjs
@@ -114,7 +122,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          NOTES="Foundry VTT v13 Orphaned Sun GM Tools with a runtime live battle-map Scene Library and persistent Battlefield Dynamics runtime lifecycle plus diagnostics foundation. Published scenes are fetched independently of module releases."
+          NOTES="Foundry VTT v13 Orphaned Sun GM Tools with a runtime live battle-map Scene Library and persistent Battlefield Dynamics runtime lifecycle, diagnostics, and canonical area-support projection foundation. Published scenes are fetched independently of module releases."
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/orphaned-sun-scenes.zip --clobber
             gh release edit "$TAG" --title "Orphaned Sun — Foundry Scenes $VERSION" --notes "$NOTES" --latest
