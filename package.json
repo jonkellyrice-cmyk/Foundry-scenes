@@ -5,6 +5,8 @@
   "scripts": {
     "governor:validate": "node dev/patch-governor.mjs validate-workspace",
     "governor:test": "node dev/patch-governor.test.mjs",
-    "test:scene-feed": "node scripts/live-scene-feed.test.mjs"
+    "test:battlefield-dynamics-contract": "node scripts/battlefield-dynamics-contract.test.mjs",
+    "test:scene-feed": "node scripts/live-scene-feed.test.mjs",
+    "test:runtime": "npm run test:battlefield-dynamics-contract && npm run test:scene-feed"
   }
 }
