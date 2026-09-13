@@ -1,3 +1,5 @@
+import { assertBattlefieldDynamicsSceneData } from "./battlefield-dynamics-contract.mjs";
+
 export const MODULE_ID = "orphaned-sun-scenes";
 export const LIVE_SCENE_REPOSITORY = "jonkellyrice-cmyk/Foundry-scenes";
 export const LIVE_SCENE_BRANCH = "main";
@@ -73,6 +75,7 @@ export function assertLiveScenePackage(value, entry = null) {
     throw new Error("Generated scene package source metadata is incomplete.");
   }
   if (!value.sceneData || typeof value.sceneData !== "object") throw new Error("Generated scene package is missing sceneData.");
+  assertBattlefieldDynamicsSceneData(value.sceneData, MODULE_ID);
   const asset = value.backgroundAsset;
   if (!asset || typeof asset !== "object" || !asString(asset.base64).trim()) throw new Error("Generated scene package is missing its embedded background asset.");
   if (!/^[a-f0-9]{64}$/i.test(asString(asset.sha256))) throw new Error("Generated scene package background digest is invalid.");
