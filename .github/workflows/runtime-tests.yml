@@ -34,10 +34,18 @@ jobs:
           set -euo pipefail
           node --check scripts/battlefield-dynamics-contract.mjs
           node --check scripts/battlefield-dynamics-contract.test.mjs
+          node --check scripts/battlefield-dynamics-runtime.mjs
+          node --check scripts/battlefield-dynamics-runtime.test.mjs
           node --check scripts/live-scene-feed.mjs
           node --check scripts/live-scene-feed.test.mjs
           node --check scripts/scene-library.mjs
           node --check scripts/comic-book-maker.mjs
+
+      - name: Validate module manifest runtime contract
+        run: |
+          set -euo pipefail
+          test "$(jq -r '.id' module.json)" = "orphaned-sun-scenes"
+          test "$(jq -r '.socket' module.json)" = "true"
 
       - name: Run runtime regression suite
         run: npm run test:runtime

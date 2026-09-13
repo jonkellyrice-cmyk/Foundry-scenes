@@ -17,6 +17,12 @@ import {
   clearComicDraft,
   createComicBookScene
 } from "./comic-book-maker.mjs";
+import {
+  battlefieldDynamicsRuntimeManager,
+  installBattlefieldDynamicsRuntime
+} from "./battlefield-dynamics-runtime.mjs";
+
+installBattlefieldDynamicsRuntime();
 
 const APP_ID = `${MODULE_ID}-scene-library`;
 const TOOLBAR_CONTROL = `${MODULE_ID}-control`;
@@ -430,6 +436,7 @@ Hooks.once("ready", () => {
     OrphanedSunSceneLibrary,
     fetchLiveSceneRegistry,
     importLiveScene,
-    createComicBookScene
+    createComicBookScene,
+    battlefieldDynamicsRuntime: battlefieldDynamicsRuntimeManager
   });
 });
