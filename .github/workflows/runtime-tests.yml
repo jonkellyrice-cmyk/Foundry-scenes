@@ -1,0 +1,43 @@
+name: Foundry Runtime Tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/**'
+      - 'package.json'
+      - 'module.json'
+      - '.github/workflows/runtime-tests.yml'
+      - '.github/workflows/release.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/**'
+      - 'package.json'
+      - 'module.json'
+      - '.github/workflows/runtime-tests.yml'
+      - '.github/workflows/release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check runtime script syntax
+        run: |
+          set -euo pipefail
+          node --check scripts/battlefield-dynamics-contract.mjs
+          node --check scripts/battlefield-dynamics-contract.test.mjs
+          node --check scripts/live-scene-feed.mjs
+          node --check scripts/live-scene-feed.test.mjs
+          node --check scripts/scene-library.mjs
+          node --check scripts/comic-book-maker.mjs
+
+      - name: Run runtime regression suite
+        run: npm run test:runtime
