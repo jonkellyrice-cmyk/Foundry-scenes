@@ -34,6 +34,8 @@ jobs:
           set -euo pipefail
           node --check scripts/battlefield-dynamics-contract.mjs
           node --check scripts/battlefield-dynamics-contract.test.mjs
+          node --check scripts/battlefield-dynamics-diagnostics.mjs
+          node --check scripts/battlefield-dynamics-diagnostics.test.mjs
           node --check scripts/battlefield-dynamics-runtime.mjs
           node --check scripts/battlefield-dynamics-runtime.test.mjs
           node --check scripts/live-scene-feed.mjs
@@ -52,6 +54,13 @@ jobs:
           set -euo pipefail
           grep -Fq 'BATTLEFIELD_DYNAMICS_RUNTIME_FLAG = "battlefieldDynamicsRuntime"' scripts/battlefield-dynamics-runtime.mjs
           grep -Fq 'BATTLEFIELD_DYNAMICS_RUNTIME_PERSISTENCE = "scene-flag-v1"' scripts/battlefield-dynamics-runtime.mjs
+
+      - name: Validate Battlefield Dynamics diagnostics contract
+        run: |
+          set -euo pipefail
+          grep -Fq 'BATTLEFIELD_DYNAMICS_DIAGNOSTICS_VERSION = 1' scripts/battlefield-dynamics-diagnostics.mjs
+          grep -Fq 'automatic-instruction-executor-pending' scripts/battlefield-dynamics-diagnostics.mjs
+          grep -Fq 'environment-intrinsic-unresolved' scripts/battlefield-dynamics-diagnostics.mjs
 
       - name: Run runtime regression suite
         run: npm run test:runtime
