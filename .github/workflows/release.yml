@@ -42,6 +42,8 @@ jobs:
           test -f templates/scene-library.hbs
           test -f assets/generated-scenes/registry.json
           jq -e '.schemaVersion == 1 and (.scenes | type == "array")' assets/generated-scenes/registry.json >/dev/null
+          grep -Fq 'BATTLEFIELD_DYNAMICS_RUNTIME_FLAG = "battlefieldDynamicsRuntime"' scripts/battlefield-dynamics-runtime.mjs
+          grep -Fq 'BATTLEFIELD_DYNAMICS_RUNTIME_PERSISTENCE = "scene-flag-v1"' scripts/battlefield-dynamics-runtime.mjs
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
@@ -91,6 +93,8 @@ jobs:
           test -s dist/verify/scripts/live-scene-feed.mjs
           test -s dist/verify/scripts/scene-library.mjs
           test -s dist/verify/scripts/comic-book-maker.mjs
+          grep -Fq 'BATTLEFIELD_DYNAMICS_RUNTIME_FLAG = "battlefieldDynamicsRuntime"' dist/verify/scripts/battlefield-dynamics-runtime.mjs
+          grep -Fq 'BATTLEFIELD_DYNAMICS_RUNTIME_PERSISTENCE = "scene-flag-v1"' dist/verify/scripts/battlefield-dynamics-runtime.mjs
           node --check dist/verify/scripts/battlefield-dynamics-contract.mjs
           node --check dist/verify/scripts/battlefield-dynamics-runtime.mjs
           node --check dist/verify/scripts/live-scene-feed.mjs
@@ -104,7 +108,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          NOTES="Foundry VTT v13 Orphaned Sun GM Tools with a runtime live battle-map Scene Library and Battlefield Dynamics runtime foundation. Published scenes are fetched independently of module releases."
+          NOTES="Foundry VTT v13 Orphaned Sun GM Tools with a runtime live battle-map Scene Library and persistent Battlefield Dynamics runtime lifecycle foundation. Published scenes are fetched independently of module releases."
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/orphaned-sun-scenes.zip --clobber
             gh release edit "$TAG" --title "Orphaned Sun — Foundry Scenes $VERSION" --notes "$NOTES" --latest
