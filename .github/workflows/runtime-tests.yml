@@ -36,6 +36,8 @@ jobs:
           node --check scripts/battlefield-dynamics-contract.test.mjs
           node --check scripts/battlefield-dynamics-diagnostics.mjs
           node --check scripts/battlefield-dynamics-diagnostics.test.mjs
+          node --check scripts/battlefield-dynamics-spatial.mjs
+          node --check scripts/battlefield-dynamics-spatial.test.mjs
           node --check scripts/battlefield-dynamics-runtime.mjs
           node --check scripts/battlefield-dynamics-runtime.test.mjs
           node --check scripts/live-scene-feed.mjs
@@ -61,6 +63,14 @@ jobs:
           grep -Fq 'BATTLEFIELD_DYNAMICS_DIAGNOSTICS_VERSION = 1' scripts/battlefield-dynamics-diagnostics.mjs
           grep -Fq 'automatic-instruction-executor-pending' scripts/battlefield-dynamics-diagnostics.mjs
           grep -Fq 'environment-intrinsic-unresolved' scripts/battlefield-dynamics-diagnostics.mjs
+
+      - name: Validate Battlefield Dynamics spatial projection contract
+        run: |
+          set -euo pipefail
+          grep -Fq 'BATTLEFIELD_DYNAMICS_SPATIAL_VERSION = 1' scripts/battlefield-dynamics-spatial.mjs
+          grep -Fq 'BATTLEFIELD_DYNAMICS_PROJECTION_OWNERSHIP = "battlefield-dynamics-disposable-region"' scripts/battlefield-dynamics-spatial.mjs
+          grep -Fq 'spatial-support-not-area-projectable' scripts/battlefield-dynamics-spatial.mjs
+          grep -Fq 'createEmbeddedDocuments("Region"' scripts/battlefield-dynamics-spatial.mjs
 
       - name: Run runtime regression suite
         run: npm run test:runtime

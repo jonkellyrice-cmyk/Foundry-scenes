@@ -72,6 +72,7 @@ function generation() {
           stateInitialization: { mode: "stateless", initialState: null },
         },
       ],
+      spatialGroups: [],
     },
     executionHandoff: {
       contract,
@@ -309,6 +310,7 @@ assert.equal(bootstrapped.length, 2);
 assert.equal(manager.runtimeForScene("managed").status, "active");
 assert.equal(manager.runtimeForScene("plain"), null);
 assert.equal(manager.listSceneRuntimes().length, 1);
+assert.equal(manager.diagnosticsForScene("managed").some(diagnostic => diagnostic.category === "spatial"), false);
 assert.equal(managedDocument.writes.set, 1);
 assert.equal(plainDocument.writes.unset, 0);
 const persistedInitial = managedDocument.getFlag(MODULE_ID, BATTLEFIELD_DYNAMICS_RUNTIME_FLAG);
@@ -440,4 +442,4 @@ assert.equal(installed.runtimeForScene("ready-scene"), null);
 assert.deepEqual(installed.diagnosticsForScene("ready-scene"), []);
 delete globalThis.game;
 
-console.log("battlefield dynamics runtime rehydration and diagnostics integration tests passed");
+console.log("battlefield dynamics runtime rehydration, spatial, and diagnostics integration tests passed");
