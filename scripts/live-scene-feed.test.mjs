@@ -73,6 +73,31 @@ const scenePackage = {
   generatedAt: "2026-09-06T00:00:00.000Z"
 };
 assert.equal(assertLiveScenePackage(scenePackage, registry.scenes[0]), scenePackage);
+
+const legacyDynamicsPackage = structuredClone(scenePackage);
+legacyDynamicsPackage.sceneData.flags = {
+  "orphaned-sun-scenes": {
+    battlefieldDynamicsGeneration: {
+      implementationStatus: "effect-framework-active",
+      applicationComposition: { instances: [] }
+    }
+  }
+};
+assert.equal(assertLiveScenePackage(legacyDynamicsPackage, registry.scenes[0]), legacyDynamicsPackage);
+
+const malformedExecutablePackage = structuredClone(scenePackage);
+malformedExecutablePackage.sceneData.flags = {
+  "orphaned-sun-scenes": {
+    battlefieldDynamicsGeneration: {
+      executionHandoff: { contract: { version: 2 } }
+    }
+  }
+};
+assert.throws(
+  () => assertLiveScenePackage(malformedExecutablePackage, registry.scenes[0]),
+  /Battlefield Dynamics execution handoff invalid: contract.version must be 1/,
+);
+
 assert.throws(() => normalizeLiveSceneRegistry({ schemaVersion: 1, scenes: [{ ...registry.scenes[0], packagePath: "../escape.scene-package.json" }] }), /Unsafe generated scene package path/);
 assert.throws(() => assertLiveScenePackage({ ...scenePackage, sceneData: { ...scenePackage.sceneData, width: 1200 } }, registry.scenes[0]), /dimensions do not match/);
 assert.throws(() => assertLiveScenePackage({ ...scenePackage, sceneData: { ...scenePackage.sceneData, background: { ...scenePackage.sceneData.background, offsetX: 1 } } }, registry.scenes[0]), /identity-aligned/);
