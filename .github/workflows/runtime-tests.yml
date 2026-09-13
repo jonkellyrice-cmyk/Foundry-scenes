@@ -47,5 +47,11 @@ jobs:
           test "$(jq -r '.id' module.json)" = "orphaned-sun-scenes"
           test "$(jq -r '.socket' module.json)" = "true"
 
+      - name: Validate Battlefield Dynamics persistence contract
+        run: |
+          set -euo pipefail
+          grep -Fq 'BATTLEFIELD_DYNAMICS_RUNTIME_FLAG = "battlefieldDynamicsRuntime"' scripts/battlefield-dynamics-runtime.mjs
+          grep -Fq 'BATTLEFIELD_DYNAMICS_RUNTIME_PERSISTENCE = "scene-flag-v1"' scripts/battlefield-dynamics-runtime.mjs
+
       - name: Run runtime regression suite
         run: npm run test:runtime
