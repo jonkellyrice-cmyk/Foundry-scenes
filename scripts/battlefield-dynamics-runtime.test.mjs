@@ -5,15 +5,20 @@ import {
   BATTLEFIELD_DYNAMICS_TRIGGER_KINDS,
 } from "./battlefield-dynamics-contract.mjs";
 import {
+  BATTLEFIELD_DYNAMICS_RUNTIME_FLAG,
   BATTLEFIELD_DYNAMICS_RUNTIME_OWNERSHIP,
   BATTLEFIELD_DYNAMICS_RUNTIME_PERSISTENCE,
   BATTLEFIELD_DYNAMICS_SOCKET_NAMESPACE,
   BattlefieldDynamicsRuntimeManager,
+  battlefieldDynamicsSceneUpdateIsRelevant,
   createBattlefieldDynamicsRuntimeState,
   designatedActiveGM,
   installBattlefieldDynamicsRuntime,
   isAuthoritativeGM,
+  serializeBattlefieldDynamicsRuntimeState,
 } from "./battlefield-dynamics-runtime.mjs";
+
+const MODULE_ID = "orphaned-sun-scenes";
 
 const contract = {
   version: 1,
@@ -87,47 +92,180 @@ function executableScene(id = "scene-1") {
     id,
     name: "Runtime Test Scene",
     flags: {
-      "orphaned-sun-scenes": {
+      [MODULE_ID]: {
         battlefieldDynamicsGeneration: generation(),
       },
     },
   };
 }
 
+function sceneDocument(raw) {
+  const data = structuredClone(raw);
+  const writes = { set: 0, unset: 0 };
+  return {
+    id: data.id,
+    name: data.name,
+    writes,
+    toObject() {
+      return structuredClone(data);
+    },
+    getFlag(moduleId, key) {
+      return data.flags?.[moduleId]?.[key] ?? null;
+    },
+    async setFlag(moduleId, key, value) {
+      data.flags ??= {};
+      data.flags[moduleId] ??= {};
+      data.flags[moduleId][key] = structuredClone(value);
+      writes.set += 1;
+      return this;
+    },
+    async unsetFlag(moduleId, key) {
+      if (data.flags?.[moduleId]) delete data.flags[moduleId][key];
+      writes.unset += 1;
+      return this;
+    },
+    replaceGeneration(value) {
+      data.flags ??= {};
+      data.flags[MODULE_ID] ??= {};
+      if (value == null) delete data.flags[MODULE_ID].battlefieldDynamicsGeneration;
+      else data.flags[MODULE_ID].battlefieldDynamicsGeneration = structuredClone(value);
+    },
+    setRawRuntime(value) {
+      data.flags ??= {};
+      data.flags[MODULE_ID] ??= {};
+      data.flags[MODULE_ID][BATTLEFIELD_DYNAMICS_RUNTIME_FLAG] = structuredClone(value);
+    },
+    snapshot() {
+      return structuredClone(data);
+    },
+  };
+}
+
 const scene = executableScene();
-const before = structuredClone(scene.flags["orphaned-sun-scenes"].battlefieldDynamicsGeneration);
+const before = structuredClone(scene.flags[MODULE_ID].battlefieldDynamicsGeneration);
 const runtime = createBattlefieldDynamicsRuntimeState(scene);
 assert.equal(runtime.status, "active");
 assert.equal(runtime.ownership, BATTLEFIELD_DYNAMICS_RUNTIME_OWNERSHIP);
 assert.equal(runtime.persistence, BATTLEFIELD_DYNAMICS_RUNTIME_PERSISTENCE);
 assert.equal(runtime.instances.size, 3);
+assert.deepEqual(runtime.rehydration, {
+  persistedStatus: "absent",
+  restoredApplicationCount: 0,
+  initializedApplicationCount: 3,
+  staleApplicationCount: 0,
+});
 assert.equal(runtime.instances.get("Open Field/ruins/fragile-cover/application-a").currentState, "intact");
 assert.equal(runtime.instances.get("Open Field/road/wind/application-c").currentState, null);
 assert.ok(Object.isFrozen(runtime.canonicalGeneration));
 assert.ok(Object.isFrozen(runtime.canonicalGeneration.executionHandoff.contract));
-assert.deepEqual(scene.flags["orphaned-sun-scenes"].battlefieldDynamicsGeneration, before);
+assert.ok(Object.isFrozen(runtime.instances.get("Open Field/ruins/fragile-cover/application-a").stateInitialization));
+assert.deepEqual(scene.flags[MODULE_ID].battlefieldDynamicsGeneration, before);
 
 runtime.instances.get("Open Field/ruins/fragile-cover/application-a").currentState = "broken";
-assert.equal(runtime.instances.get("Open Field/ruins/fragile-cover/application-a").currentState, "broken");
+runtime.instances.get("Open Field/ruins/fragile-cover/application-a").revision = 4;
 assert.equal(runtime.instances.get("Open Field/ruins/fragile-cover/application-b").currentState, "intact");
 assert.equal(runtime.canonicalGeneration.applicationComposition.instances[0].stateInitialization.initialState, "intact");
-assert.deepEqual(scene.flags["orphaned-sun-scenes"].battlefieldDynamicsGeneration, before);
+assert.deepEqual(scene.flags[MODULE_ID].battlefieldDynamicsGeneration, before);
+
+const serialized = serializeBattlefieldDynamicsRuntimeState(runtime);
+assert.equal(serialized.sceneId, "scene-1");
+assert.equal(serialized.ownership, BATTLEFIELD_DYNAMICS_RUNTIME_OWNERSHIP);
+assert.equal(serialized.persistence, BATTLEFIELD_DYNAMICS_RUNTIME_PERSISTENCE);
+assert.equal(serialized.applications["Open Field/ruins/fragile-cover/application-a"].currentState, "broken");
+assert.equal(serialized.applications["Open Field/ruins/fragile-cover/application-a"].revision, 4);
+assert.equal(serialized.applications["Open Field/road/wind/application-c"].currentState, null);
+
+const reloadScene = structuredClone(scene);
+reloadScene.flags[MODULE_ID][BATTLEFIELD_DYNAMICS_RUNTIME_FLAG] = structuredClone(serialized);
+const reloaded = createBattlefieldDynamicsRuntimeState(reloadScene);
+assert.equal(reloaded.instances.get("Open Field/ruins/fragile-cover/application-a").currentState, "broken");
+assert.equal(reloaded.instances.get("Open Field/ruins/fragile-cover/application-a").revision, 4);
+assert.deepEqual(reloaded.rehydration, {
+  persistedStatus: "valid",
+  restoredApplicationCount: 3,
+  initializedApplicationCount: 0,
+  staleApplicationCount: 0,
+});
+
+const changedGeneration = generation();
+changedGeneration.applicationComposition.instances = [
+  changedGeneration.applicationComposition.instances[0],
+  changedGeneration.applicationComposition.instances[2],
+  {
+    key: "Open Field/bridge/shutters/application-d",
+    environmentId: "Open Field",
+    physicalContextId: "bridge",
+    dynamicId: "shutters",
+    sourceApplicationId: "application-d",
+    stateInitialization: { mode: "finite-state", initialState: "closed" },
+  },
+];
+const changedScene = structuredClone(reloadScene);
+changedScene.flags[MODULE_ID].battlefieldDynamicsGeneration = changedGeneration;
+const reconciled = createBattlefieldDynamicsRuntimeState(changedScene);
+assert.equal(reconciled.instances.size, 3);
+assert.equal(reconciled.instances.get("Open Field/ruins/fragile-cover/application-a").currentState, "broken");
+assert.equal(reconciled.instances.get("Open Field/road/wind/application-c").currentState, null);
+assert.equal(reconciled.instances.get("Open Field/bridge/shutters/application-d").currentState, "closed");
+assert.deepEqual(reconciled.rehydration, {
+  persistedStatus: "valid",
+  restoredApplicationCount: 2,
+  initializedApplicationCount: 1,
+  staleApplicationCount: 1,
+});
+assert.equal(serializeBattlefieldDynamicsRuntimeState(reconciled).applications["Open Field/ruins/fragile-cover/application-b"], undefined);
+
+const incompatibleScene = structuredClone(reloadScene);
+incompatibleScene.flags[MODULE_ID].battlefieldDynamicsGeneration.applicationComposition.instances[0].stateInitialization = {
+  mode: "finite-state",
+  initialState: "pristine",
+};
+const incompatible = createBattlefieldDynamicsRuntimeState(incompatibleScene);
+assert.equal(incompatible.instances.get("Open Field/ruins/fragile-cover/application-a").currentState, "pristine");
+assert.equal(incompatible.instances.get("Open Field/ruins/fragile-cover/application-a").revision, 0);
+assert.equal(incompatible.rehydration.restoredApplicationCount, 2);
+assert.equal(incompatible.rehydration.initializedApplicationCount, 1);
+
+const malformedStoreScene = structuredClone(scene);
+malformedStoreScene.flags[MODULE_ID][BATTLEFIELD_DYNAMICS_RUNTIME_FLAG] = {
+  version: 999,
+  ownership: BATTLEFIELD_DYNAMICS_RUNTIME_OWNERSHIP,
+  persistence: BATTLEFIELD_DYNAMICS_RUNTIME_PERSISTENCE,
+  sceneId: malformedStoreScene.id,
+  applications: {},
+};
+const malformedStoreRuntime = createBattlefieldDynamicsRuntimeState(malformedStoreScene);
+assert.equal(malformedStoreRuntime.rehydration.persistedStatus, "invalid");
+assert.equal(malformedStoreRuntime.rehydration.initializedApplicationCount, 3);
+
+const copiedStoreScene = structuredClone(reloadScene);
+copiedStoreScene.id = "copied-scene";
+const copiedStoreRuntime = createBattlefieldDynamicsRuntimeState(copiedStoreScene);
+assert.equal(copiedStoreRuntime.rehydration.persistedStatus, "invalid");
+assert.equal(copiedStoreRuntime.instances.get("Open Field/ruins/fragile-cover/application-a").currentState, "intact");
 
 const absent = createBattlefieldDynamicsRuntimeState({ id: "absent", flags: {} });
 assert.deepEqual(absent, { status: "inactive", reason: "absent", sceneId: "absent", receiverStatus: "absent" });
 const legacy = createBattlefieldDynamicsRuntimeState({
   id: "legacy",
-  flags: { "orphaned-sun-scenes": { battlefieldDynamicsGeneration: { applicationComposition: {} } } },
+  flags: { [MODULE_ID]: { battlefieldDynamicsGeneration: { applicationComposition: {} } } },
 });
 assert.equal(legacy.status, "inactive");
 assert.equal(legacy.reason, "legacy-semantic-only");
 
 const malformed = executableScene("bad-state");
-malformed.flags["orphaned-sun-scenes"].battlefieldDynamicsGeneration.applicationComposition.instances[0].stateInitialization = {
+malformed.flags[MODULE_ID].battlefieldDynamicsGeneration.applicationComposition.instances[0].stateInitialization = {
   mode: "finite-state",
   initialState: null,
 };
 assert.throws(() => createBattlefieldDynamicsRuntimeState(malformed), /requires an initial state/);
+
+assert.equal(battlefieldDynamicsSceneUpdateIsRelevant({ name: "No runtime change" }), false);
+assert.equal(battlefieldDynamicsSceneUpdateIsRelevant({ flags: { other: { value: true } } }), false);
+assert.equal(battlefieldDynamicsSceneUpdateIsRelevant({ flags: { [MODULE_ID]: { battlefieldDynamicsGeneration: {} } } }), true);
+assert.equal(battlefieldDynamicsSceneUpdateIsRelevant({ flags: { [MODULE_ID]: { battlefieldDynamicsRuntime: {} } } }), true);
+assert.equal(battlefieldDynamicsSceneUpdateIsRelevant({ [`flags.${MODULE_ID}.battlefieldDynamicsRuntime`]: {} }), true);
+assert.equal(battlefieldDynamicsSceneUpdateIsRelevant({ [`flags.${MODULE_ID}.-=battlefieldDynamicsGeneration`]: null }), true);
 
 const gm1 = { id: "gm-1", isGM: true, active: true };
 const gm2 = { id: "gm-2", isGM: true, active: true };
@@ -149,21 +287,83 @@ const socket = {
     socketHandler = handler;
   },
 };
-const manager = new BattlefieldDynamicsRuntimeManager({ gameRef: { users, user: gm1, socket, scenes: [executableScene("managed"), { id: "plain", flags: {} }] } });
+
+const managedDocument = sceneDocument(executableScene("managed"));
+const plainDocument = sceneDocument({ id: "plain", name: "Plain", flags: {} });
+const manager = new BattlefieldDynamicsRuntimeManager({
+  gameRef: { users, user: gm1, socket, scenes: [managedDocument, plainDocument] },
+});
 assert.equal(manager.registerSocket(), true);
 assert.equal(manager.registerSocket(), true);
 assert.equal(socketNamespace, BATTLEFIELD_DYNAMICS_SOCKET_NAMESPACE);
 assert.equal(typeof socketHandler, "function");
 assert.deepEqual(manager.receiveSocketMessage({ version: 1, type: "runtime-authority-probe" }), { handled: true, reason: "authority-probe" });
 assert.equal(manager.receiveSocketMessage({ version: 1, type: "not-yet-supported" }).handled, false);
-const bootstrapped = manager.bootstrapWorldScenes();
+
+const bootstrapped = await manager.bootstrapWorldScenes();
 assert.equal(bootstrapped.length, 2);
 assert.equal(manager.runtimeForScene("managed").status, "active");
 assert.equal(manager.runtimeForScene("plain"), null);
 assert.equal(manager.listSceneRuntimes().length, 1);
+assert.equal(managedDocument.writes.set, 1);
+assert.equal(plainDocument.writes.unset, 0);
+const persistedInitial = managedDocument.getFlag(MODULE_ID, BATTLEFIELD_DYNAMICS_RUNTIME_FLAG);
+assert.equal(persistedInitial.applications["Open Field/ruins/fragile-cover/application-a"].currentState, "intact");
+
+manager.runtimeForScene("managed").instances.get("Open Field/ruins/fragile-cover/application-a").currentState = "broken";
+manager.runtimeForScene("managed").instances.get("Open Field/ruins/fragile-cover/application-a").revision = 2;
+assert.deepEqual(await manager.persistSceneRuntime(managedDocument), { persisted: true, reason: "updated" });
+assert.deepEqual(await manager.persistSceneRuntime(managedDocument), { persisted: false, reason: "unchanged" });
+assert.equal(managedDocument.writes.set, 2);
+
+const reloadManager = new BattlefieldDynamicsRuntimeManager({
+  gameRef: { users, user: gm1, socket, scenes: [managedDocument] },
+});
+const rehydratedManaged = await reloadManager.bootstrapScene(managedDocument);
+assert.equal(rehydratedManaged.instances.get("Open Field/ruins/fragile-cover/application-a").currentState, "broken");
+assert.equal(rehydratedManaged.instances.get("Open Field/ruins/fragile-cover/application-a").revision, 2);
+assert.equal(rehydratedManaged.rehydration.restoredApplicationCount, 3);
+assert.equal(managedDocument.writes.set, 2);
+
+const stalePersisted = managedDocument.getFlag(MODULE_ID, BATTLEFIELD_DYNAMICS_RUNTIME_FLAG);
+stalePersisted.applications["stale/application"] = {
+  identity: {
+    environmentId: "Open Field",
+    physicalContextId: "old",
+    dynamicId: "old",
+    sourceApplicationId: "old",
+  },
+  stateInitialization: { mode: "finite-state", initialState: "old" },
+  currentState: "old",
+  revision: 1,
+};
+managedDocument.setRawRuntime(stalePersisted);
+const cleaned = await reloadManager.bootstrapScene(managedDocument);
+assert.equal(cleaned.rehydration.staleApplicationCount, 1);
+assert.equal(managedDocument.getFlag(MODULE_ID, BATTLEFIELD_DYNAMICS_RUNTIME_FLAG).applications["stale/application"], undefined);
+
+const inactiveWithRuntime = sceneDocument({
+  id: "inactive-with-runtime",
+  flags: { [MODULE_ID]: { [BATTLEFIELD_DYNAMICS_RUNTIME_FLAG]: serialized } },
+});
+const inactiveManager = new BattlefieldDynamicsRuntimeManager({
+  gameRef: { users, user: gm1, socket, scenes: [inactiveWithRuntime] },
+});
+const inactiveResult = await inactiveManager.bootstrapScene(inactiveWithRuntime);
+assert.equal(inactiveResult.status, "inactive");
+assert.equal(inactiveWithRuntime.getFlag(MODULE_ID, BATTLEFIELD_DYNAMICS_RUNTIME_FLAG), null);
+assert.equal(inactiveWithRuntime.writes.unset, 1);
+
+const playerDocument = sceneDocument(executableScene("player-view"));
+const playerManager = new BattlefieldDynamicsRuntimeManager({
+  gameRef: { users, user: player, socket, scenes: [playerDocument] },
+});
+await playerManager.bootstrapScene(playerDocument);
+assert.equal(playerDocument.writes.set, 0);
+assert.equal(playerManager.runtimeForScene("player-view").status, "active");
+
 assert.equal(manager.disposeScene("managed"), true);
 assert.equal(manager.runtimeForScene("managed"), null);
-
 manager.bindGame({ users, user: gm2, socket, scenes: [] });
 assert.deepEqual(manager.receiveSocketMessage({ version: 1, type: "runtime-authority-probe" }), { handled: false, reason: "not-authoritative-gm" });
 
@@ -173,15 +373,49 @@ const HooksRef = {
   once(name, fn) { readyHooks.set(name, fn); },
   on(name, fn) { persistentHooks.set(name, fn); },
 };
-const lifecycleGame = { users, user: gm1, socket, scenes: [executableScene("ready-scene")] };
+const readyDocument = sceneDocument(executableScene("ready-scene"));
+const lifecycleGame = { users, user: gm1, socket, scenes: [readyDocument] };
 globalThis.game = lifecycleGame;
 const installed = installBattlefieldDynamicsRuntime({ HooksRef, gameRef: lifecycleGame });
 assert.equal(typeof readyHooks.get("ready"), "function");
 assert.equal(typeof persistentHooks.get("createScene"), "function");
-readyHooks.get("ready")();
+assert.equal(typeof persistentHooks.get("updateScene"), "function");
+assert.equal(typeof persistentHooks.get("deleteScene"), "function");
+await readyHooks.get("ready")();
 assert.equal(installed.runtimeForScene("ready-scene").status, "active");
-persistentHooks.get("createScene")(executableScene("created-scene"));
+assert.equal(readyDocument.writes.set, 1);
+
+const createdDocument = sceneDocument(executableScene("created-scene"));
+await persistentHooks.get("createScene")(createdDocument);
 assert.equal(installed.runtimeForScene("created-scene").status, "active");
+assert.equal(createdDocument.writes.set, 1);
+
+const beforeIrrelevant = createdDocument.writes.set;
+await persistentHooks.get("updateScene")(createdDocument, { name: "Renamed" });
+assert.equal(createdDocument.writes.set, beforeIrrelevant);
+createdDocument.replaceGeneration(null);
+await persistentHooks.get("updateScene")(createdDocument, { flags: { [MODULE_ID]: { "-=battlefieldDynamicsGeneration": null } } });
+assert.equal(installed.runtimeForScene("created-scene"), null);
+assert.equal(createdDocument.getFlag(MODULE_ID, BATTLEFIELD_DYNAMICS_RUNTIME_FLAG), null);
+assert.equal(createdDocument.writes.unset, 1);
+
+const restoreOld = sceneDocument(executableScene("restore-old"));
+await installed.bootstrapScene(restoreOld);
+installed.runtimeForScene("restore-old").instances.get("Open Field/ruins/fragile-cover/application-a").currentState = "broken";
+installed.runtimeForScene("restore-old").instances.get("Open Field/ruins/fragile-cover/application-a").revision = 3;
+await installed.persistSceneRuntime(restoreOld);
+assert.equal(restoreOld.getFlag(MODULE_ID, BATTLEFIELD_DYNAMICS_RUNTIME_FLAG).applications["Open Field/ruins/fragile-cover/application-a"].currentState, "broken");
+persistentHooks.get("deleteScene")(restoreOld);
+assert.equal(installed.runtimeForScene("restore-old"), null);
+
+const restoreNew = sceneDocument(executableScene("restore-new"));
+await persistentHooks.get("createScene")(restoreNew);
+assert.equal(installed.runtimeForScene("restore-new").instances.get("Open Field/ruins/fragile-cover/application-a").currentState, "intact");
+assert.equal(installed.runtimeForScene("restore-new").instances.get("Open Field/ruins/fragile-cover/application-a").revision, 0);
+assert.equal(installed.runtimeForScene("restore-new").rehydration.persistedStatus, "absent");
+
+persistentHooks.get("deleteScene")(readyDocument);
+assert.equal(installed.runtimeForScene("ready-scene"), null);
 delete globalThis.game;
 
-console.log("battlefield dynamics runtime bootstrap tests passed");
+console.log("battlefield dynamics runtime rehydration tests passed");
