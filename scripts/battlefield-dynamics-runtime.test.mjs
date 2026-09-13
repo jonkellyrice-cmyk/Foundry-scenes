@@ -299,6 +299,10 @@ assert.equal(socketNamespace, BATTLEFIELD_DYNAMICS_SOCKET_NAMESPACE);
 assert.equal(typeof socketHandler, "function");
 assert.deepEqual(manager.receiveSocketMessage({ version: 1, type: "runtime-authority-probe" }), { handled: true, reason: "authority-probe" });
 assert.equal(manager.receiveSocketMessage({ version: 1, type: "not-yet-supported" }).handled, false);
+assert.equal(manager.listDiagnostics().at(-1).code, "socket-message-unsupported");
+assert.equal(manager.receiveSocketMessage({ version: 99, type: "runtime-authority-probe", sceneId: "managed" }).handled, false);
+assert.equal(manager.listDiagnostics().at(-1).code, "socket-version-unsupported");
+assert.equal(manager.diagnosticsForScene("managed").at(-1).code, "socket-version-unsupported");
 
 const bootstrapped = await manager.bootstrapWorldScenes();
 assert.equal(bootstrapped.length, 2);
@@ -341,6 +345,21 @@ managedDocument.setRawRuntime(stalePersisted);
 const cleaned = await reloadManager.bootstrapScene(managedDocument);
 assert.equal(cleaned.rehydration.staleApplicationCount, 1);
 assert.equal(managedDocument.getFlag(MODULE_ID, BATTLEFIELD_DYNAMICS_RUNTIME_FLAG).applications["stale/application"], undefined);
+assert.equal(reloadManager.diagnosticsForScene("managed").some(diagnostic => diagnostic.code === "runtime-stale-applications-pruned"), true);
+
+const diagnosticStoreDocument = sceneDocument(executableScene("diagnostic-store"));
+diagnosticStoreDocument.setRawRuntime({
+  version: 999,
+  ownership: BATTLEFIELD_DYNAMICS_RUNTIME_OWNERSHIP,
+  persistence: BATTLEFIELD_DYNAMICS_RUNTIME_PERSISTENCE,
+  sceneId: "diagnostic-store",
+  applications: {},
+});
+const diagnosticManager = new BattlefieldDynamicsRuntimeManager({
+  gameRef: { users, user: gm1, socket, scenes: [diagnosticStoreDocument] },
+});
+await diagnosticManager.bootstrapScene(diagnosticStoreDocument);
+assert.equal(diagnosticManager.diagnosticsForScene("diagnostic-store").some(diagnostic => diagnostic.code === "runtime-store-reset"), true);
 
 const inactiveWithRuntime = sceneDocument({
   id: "inactive-with-runtime",
@@ -364,6 +383,7 @@ assert.equal(playerManager.runtimeForScene("player-view").status, "active");
 
 assert.equal(manager.disposeScene("managed"), true);
 assert.equal(manager.runtimeForScene("managed"), null);
+assert.deepEqual(manager.diagnosticsForScene("managed"), []);
 manager.bindGame({ users, user: gm2, socket, scenes: [] });
 assert.deepEqual(manager.receiveSocketMessage({ version: 1, type: "runtime-authority-probe" }), { handled: false, reason: "not-authoritative-gm" });
 
@@ -407,6 +427,7 @@ await installed.persistSceneRuntime(restoreOld);
 assert.equal(restoreOld.getFlag(MODULE_ID, BATTLEFIELD_DYNAMICS_RUNTIME_FLAG).applications["Open Field/ruins/fragile-cover/application-a"].currentState, "broken");
 persistentHooks.get("deleteScene")(restoreOld);
 assert.equal(installed.runtimeForScene("restore-old"), null);
+assert.deepEqual(installed.diagnosticsForScene("restore-old"), []);
 
 const restoreNew = sceneDocument(executableScene("restore-new"));
 await persistentHooks.get("createScene")(restoreNew);
@@ -416,6 +437,7 @@ assert.equal(installed.runtimeForScene("restore-new").rehydration.persistedStatu
 
 persistentHooks.get("deleteScene")(readyDocument);
 assert.equal(installed.runtimeForScene("ready-scene"), null);
+assert.deepEqual(installed.diagnosticsForScene("ready-scene"), []);
 delete globalThis.game;
 
-console.log("battlefield dynamics runtime rehydration tests passed");
+console.log("battlefield dynamics runtime rehydration and diagnostics integration tests passed");

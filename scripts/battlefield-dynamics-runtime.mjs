@@ -1,4 +1,9 @@
 import { battlefieldDynamicsReceiverState } from "./battlefield-dynamics-contract.mjs";
+import {
+  BattlefieldDynamicsDiagnosticsRegistry,
+  collectBattlefieldDynamicsSceneDiagnostics,
+  diagnoseBattlefieldDynamicsSocketFailure,
+} from "./battlefield-dynamics-diagnostics.mjs";
 import { MODULE_ID } from "./live-scene-feed.mjs";
 
 export const BATTLEFIELD_DYNAMICS_RUNTIME_VERSION = 1;
@@ -281,6 +286,7 @@ export class BattlefieldDynamicsRuntimeManager {
     this.game = gameRef;
     this.logger = logger;
     this.scenes = new Map();
+    this.diagnostics = new BattlefieldDynamicsDiagnosticsRegistry();
     this.socketRegistered = false;
     this._socketHandler = message => this.receiveSocketMessage(message);
   }
@@ -293,6 +299,25 @@ export class BattlefieldDynamicsRuntimeManager {
   sceneDocument(sceneOrId) {
     if (sceneOrId && typeof sceneOrId !== "string") return sceneOrId;
     return sceneFromCollection(this.game?.scenes, sceneOrId);
+  }
+
+  refreshSceneDiagnostics(scene, runtime = null) {
+    const id = sceneId(scene);
+    if (!nonEmpty(id)) return [];
+    return this.diagnostics.replaceScene(id, collectBattlefieldDynamicsSceneDiagnostics(scene, runtime));
+  }
+
+  diagnosticsForScene(sceneOrId) {
+    const id = typeof sceneOrId === "string" ? sceneOrId : sceneId(sceneOrId);
+    return nonEmpty(id) ? this.diagnostics.forScene(id) : [];
+  }
+
+  listDiagnostics() {
+    return this.diagnostics.list();
+  }
+
+  diagnosticsSummary() {
+    return this.diagnostics.summary();
   }
 
   async persistSceneRuntime(sceneOrId, runtime = null) {
@@ -323,7 +348,15 @@ export class BattlefieldDynamicsRuntimeManager {
   async bootstrapScene(scene, { persist = true } = {}) {
     const id = sceneId(scene);
     if (!nonEmpty(id)) throw new Error("Battlefield Dynamics runtime cannot bootstrap a Scene without an id.");
-    const runtime = createBattlefieldDynamicsRuntimeState(scene);
+    let runtime;
+    try {
+      runtime = createBattlefieldDynamicsRuntimeState(scene);
+    } catch (error) {
+      this.scenes.delete(id);
+      this.refreshSceneDiagnostics(scene, null);
+      throw error;
+    }
+    this.refreshSceneDiagnostics(scene, runtime);
     if (runtime.status !== "active") {
       this.scenes.delete(id);
       if (persist) await this.clearPersistedSceneRuntime(scene);
@@ -343,7 +376,10 @@ export class BattlefieldDynamicsRuntimeManager {
 
   disposeScene(sceneOrId) {
     const id = typeof sceneOrId === "string" ? sceneOrId : sceneId(sceneOrId);
-    return nonEmpty(id) ? this.scenes.delete(id) : false;
+    if (!nonEmpty(id)) return false;
+    const disposed = this.scenes.delete(id);
+    this.diagnostics.clearScene(id);
+    return disposed;
   }
 
   runtimeForScene(sceneOrId) {
@@ -374,6 +410,7 @@ export class BattlefieldDynamicsRuntimeManager {
     try {
       parsed = assertBattlefieldDynamicsSocketMessage(message);
     } catch (error) {
+      this.diagnostics.recordEvent(diagnoseBattlefieldDynamicsSocketFailure(message, error));
       this.logger?.warn?.(`${MODULE_ID} | Ignored invalid Battlefield Dynamics socket message`, error);
       return { handled: false, reason: "invalid-message" };
     }
