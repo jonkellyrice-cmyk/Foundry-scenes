@@ -2,7 +2,7 @@
   "id": "orphaned-sun-scenes",
   "title": "Orphaned Sun — Foundry Scenes",
   "description": "Orphaned Sun GM tools for Foundry VTT v13, including a live battle-map Scene Library and comic-book scene creation.",
-  "version": "0.3.12",
+  "version": "0.3.13",
   "compatibility": {
     "minimum": 13,
     "verified": "13.350",
@@ -20,6 +20,7 @@
     "styles/scene-library.css",
     "styles/live-scene-feed.css"
   ],
+  "socket": true,
   "url": "https://github.com/jonkellyrice-cmyk/Foundry-scenes",
   "manifest": "https://raw.githubusercontent.com/jonkellyrice-cmyk/Foundry-scenes/main/module.json",
   "download": "https://github.com/jonkellyrice-cmyk/Foundry-scenes/releases/latest/download/orphaned-sun-scenes.zip",

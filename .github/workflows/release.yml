@@ -31,7 +31,9 @@ jobs:
           test -n "$VERSION"
           test "$VERSION" != "null"
           test "$MODULE_ID" = "orphaned-sun-scenes"
+          test "$(jq -r '.socket' module.json)" = "true"
           test -f scripts/battlefield-dynamics-contract.mjs
+          test -f scripts/battlefield-dynamics-runtime.mjs
           test -f scripts/live-scene-feed.mjs
           test -f scripts/scene-library.mjs
           test -f scripts/comic-book-maker.mjs
@@ -48,6 +50,7 @@ jobs:
         run: |
           set -euo pipefail
           node --check scripts/battlefield-dynamics-contract.mjs
+          node --check scripts/battlefield-dynamics-runtime.mjs
           node --check scripts/live-scene-feed.mjs
           node --check scripts/scene-library.mjs
           node --check scripts/comic-book-maker.mjs
@@ -61,7 +64,7 @@ jobs:
           mkdir -p dist/package/assets dist/package/scripts dist/package/styles dist/package/templates
           cp module.json README.md dist/package/
           cp -R assets/comic dist/package/assets/comic
-          cp scripts/battlefield-dynamics-contract.mjs scripts/live-scene-feed.mjs scripts/scene-library.mjs scripts/comic-book-maker.mjs dist/package/scripts/
+          cp scripts/battlefield-dynamics-contract.mjs scripts/battlefield-dynamics-runtime.mjs scripts/live-scene-feed.mjs scripts/scene-library.mjs scripts/comic-book-maker.mjs dist/package/scripts/
           cp styles/scene-library.css styles/live-scene-feed.css dist/package/styles/
           cp templates/scene-library.hbs dist/package/templates/
           (
@@ -82,11 +85,14 @@ jobs:
           unzip -q dist/orphaned-sun-scenes.zip -d dist/verify
           test "$(jq -r '.id' dist/verify/module.json)" = "orphaned-sun-scenes"
           test "$(jq -r '.version' dist/verify/module.json)" = "${{ steps.manifest.outputs.version }}"
+          test "$(jq -r '.socket' dist/verify/module.json)" = "true"
           test -s dist/verify/scripts/battlefield-dynamics-contract.mjs
+          test -s dist/verify/scripts/battlefield-dynamics-runtime.mjs
           test -s dist/verify/scripts/live-scene-feed.mjs
           test -s dist/verify/scripts/scene-library.mjs
           test -s dist/verify/scripts/comic-book-maker.mjs
           node --check dist/verify/scripts/battlefield-dynamics-contract.mjs
+          node --check dist/verify/scripts/battlefield-dynamics-runtime.mjs
           node --check dist/verify/scripts/live-scene-feed.mjs
           node --check dist/verify/scripts/scene-library.mjs
 
@@ -98,7 +104,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          NOTES="Foundry VTT v13 Orphaned Sun GM Tools with a runtime live battle-map Scene Library. Published scenes are fetched independently of module releases."
+          NOTES="Foundry VTT v13 Orphaned Sun GM Tools with a runtime live battle-map Scene Library and Battlefield Dynamics runtime foundation. Published scenes are fetched independently of module releases."
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/orphaned-sun-scenes.zip --clobber
             gh release edit "$TAG" --title "Orphaned Sun — Foundry Scenes $VERSION" --notes "$NOTES" --latest
