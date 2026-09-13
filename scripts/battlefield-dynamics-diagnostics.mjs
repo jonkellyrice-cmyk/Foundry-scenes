@@ -297,7 +297,10 @@ export class BattlefieldDynamicsDiagnosticsRegistry {
 
   clearScene(sceneIdValue) {
     if (!nonEmpty(sceneIdValue)) return false;
-    return this.sceneDiagnostics.delete(sceneIdValue);
+    const removedDerived = this.sceneDiagnostics.delete(sceneIdValue);
+    const beforeEvents = this.events.length;
+    this.events = this.events.filter(diagnostic => diagnostic?.provenance?.sceneId !== sceneIdValue);
+    return removedDerived || this.events.length !== beforeEvents;
   }
 
   recordEvent(diagnostic) {
