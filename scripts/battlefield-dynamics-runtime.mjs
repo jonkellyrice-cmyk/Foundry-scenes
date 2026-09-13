@@ -2,8 +2,10 @@ import { battlefieldDynamicsReceiverState } from "./battlefield-dynamics-contrac
 import {
   BattlefieldDynamicsDiagnosticsRegistry,
   collectBattlefieldDynamicsSceneDiagnostics,
+  createBattlefieldDynamicsDiagnostic,
   diagnoseBattlefieldDynamicsSocketFailure,
 } from "./battlefield-dynamics-diagnostics.mjs";
+import { reconcileBattlefieldDynamicsAreaRegions } from "./battlefield-dynamics-spatial.mjs";
 import { MODULE_ID } from "./live-scene-feed.mjs";
 
 export const BATTLEFIELD_DYNAMICS_RUNTIME_VERSION = 1;
@@ -301,10 +303,13 @@ export class BattlefieldDynamicsRuntimeManager {
     return sceneFromCollection(this.game?.scenes, sceneOrId);
   }
 
-  refreshSceneDiagnostics(scene, runtime = null) {
+  refreshSceneDiagnostics(scene, runtime = null, extraDiagnostics = []) {
     const id = sceneId(scene);
     if (!nonEmpty(id)) return [];
-    return this.diagnostics.replaceScene(id, collectBattlefieldDynamicsSceneDiagnostics(scene, runtime));
+    const derived = collectBattlefieldDynamicsSceneDiagnostics(scene, runtime);
+    const extras = (Array.isArray(extraDiagnostics) ? extraDiagnostics : [])
+      .map(diagnostic => createBattlefieldDynamicsDiagnostic(diagnostic));
+    return this.diagnostics.replaceScene(id, [...derived, ...extras]);
   }
 
   diagnosticsForScene(sceneOrId) {
@@ -345,6 +350,10 @@ export class BattlefieldDynamicsRuntimeManager {
     return { cleared: true, reason: "removed" };
   }
 
+  async reconcileSceneSpatialProjections(scene, runtime = null) {
+    return reconcileBattlefieldDynamicsAreaRegions(scene, runtime, { authoritative: this.isAuthoritativeGM() });
+  }
+
   async bootstrapScene(scene, { persist = true } = {}) {
     const id = sceneId(scene);
     if (!nonEmpty(id)) throw new Error("Battlefield Dynamics runtime cannot bootstrap a Scene without an id.");
@@ -356,14 +365,19 @@ export class BattlefieldDynamicsRuntimeManager {
       this.refreshSceneDiagnostics(scene, null);
       throw error;
     }
-    this.refreshSceneDiagnostics(scene, runtime);
+
     if (runtime.status !== "active") {
       this.scenes.delete(id);
+      const spatial = await this.reconcileSceneSpatialProjections(scene, runtime);
+      this.refreshSceneDiagnostics(scene, runtime, spatial.issues);
       if (persist) await this.clearPersistedSceneRuntime(scene);
       return runtime;
     }
+
     this.scenes.set(id, runtime);
     if (persist) await this.persistSceneRuntime(scene, runtime);
+    const spatial = await this.reconcileSceneSpatialProjections(scene, runtime);
+    this.refreshSceneDiagnostics(scene, runtime, spatial.issues);
     return runtime;
   }
 
