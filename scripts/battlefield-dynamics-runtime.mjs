@@ -7,6 +7,7 @@ import {
 } from "./battlefield-dynamics-diagnostics.mjs";
 import { reconcileBattlefieldDynamicsAreaRegions } from "./battlefield-dynamics-spatial.mjs";
 import { BattlefieldDynamicsTriggerLedger, normalizeBattlefieldDynamicsMovement } from "./battlefield-dynamics-triggers.mjs";
+import { battlefieldDynamicsMovementCostCatalog, installBattlefieldDynamicsMovementCostAdapter } from "./battlefield-dynamics-movement-cost.mjs";
 import { MODULE_ID } from "./live-scene-feed.mjs";
 
 export const BATTLEFIELD_DYNAMICS_RUNTIME_VERSION = 1;
@@ -293,6 +294,7 @@ export class BattlefieldDynamicsRuntimeManager {
     this.socketRegistered = false;
     this.triggerLedger = new BattlefieldDynamicsTriggerLedger();
     this.triggerEvents = [];
+    this.movementCostIssueKeys = new Set();
     this._socketHandler = message => this.receiveSocketMessage(message);
   }
 
@@ -322,6 +324,13 @@ export class BattlefieldDynamicsRuntimeManager {
 
   listDiagnostics() {
     return this.diagnostics.list();
+  }
+
+  recordMovementCostIssue(issue) {
+    const key = JSON.stringify([issue.provenance?.sceneId, issue.code, issue.details]);
+    if (this.movementCostIssueKeys.has(key)) return;
+    this.movementCostIssueKeys.add(key);
+    this.diagnostics.recordEvent(createBattlefieldDynamicsDiagnostic(issue));
   }
 
   diagnosticsSummary() {
@@ -380,7 +389,8 @@ export class BattlefieldDynamicsRuntimeManager {
     this.scenes.set(id, runtime);
     if (persist) await this.persistSceneRuntime(scene, runtime);
     const spatial = await this.reconcileSceneSpatialProjections(scene, runtime);
-    this.refreshSceneDiagnostics(scene, runtime, spatial.issues);
+    const cost = battlefieldDynamicsMovementCostCatalog(scene, runtime);
+    this.refreshSceneDiagnostics(scene, runtime, [...spatial.issues, ...cost.issues]);
     return runtime;
   }
 
@@ -397,6 +407,7 @@ export class BattlefieldDynamicsRuntimeManager {
     const disposed = this.scenes.delete(id);
     this.triggerLedger.clearScene(id);
     this.triggerEvents = this.triggerEvents.filter(event => event.sceneId !== id);
+    for (const key of this.movementCostIssueKeys) if (key.includes(`"${id}"`)) this.movementCostIssueKeys.delete(key);
     this.diagnostics.clearScene(id);
     return disposed;
   }
@@ -473,6 +484,16 @@ export function installBattlefieldDynamicsRuntime({ HooksRef = globalThis.Hooks,
   HooksRef.once("ready", async () => {
     battlefieldDynamicsRuntimeManager.bindGame(globalThis.game ?? gameRef);
     battlefieldDynamicsRuntimeManager.registerSocket();
+    if (!installBattlefieldDynamicsMovementCostAdapter(globalThis.CONFIG?.Token?.objectClass, battlefieldDynamicsRuntimeManager)) {
+      globalThis.console?.warn?.(`${MODULE_ID} | Battlefield Dynamics movement cost adapter unavailable for configured Token class`);
+      for (const scene of scenesArray(battlefieldDynamicsRuntimeManager.game?.scenes)) {
+        battlefieldDynamicsRuntimeManager.recordMovementCostIssue({
+          code: "movement-cost-adapter-unavailable", category: "movement-cost", severity: "warning",
+          automaticBlocked: true, message: "Configured Foundry Token class lacks the movement cost integration method.",
+          provenance: { sceneId: sceneId(scene) }, details: {},
+        });
+      }
+    }
     try {
       await battlefieldDynamicsRuntimeManager.bootstrapWorldScenes();
     } catch (error) {

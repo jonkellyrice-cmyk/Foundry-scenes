@@ -313,6 +313,12 @@ const triggerToken = { id: "large-unit", parent: triggerScene,
 const triggerMovement = { id: "move-1", origin: { x: 0, y: 0 }, destination: { x: 1, y: 0 },
   passed: { waypoints: [{ x: 0, y: 0 }, { x: 1, y: 0 }] } };
 const triggerManager = new BattlefieldDynamicsRuntimeManager({ gameRef: { users, user: gm1 } });
+const costIssue = { code: "movement-cost-contract-unavailable", category: "movement-cost",
+  severity: "warning", automaticBlocked: true, message: "Movement cost contract missing.",
+  provenance: { sceneId: triggerScene.id }, details: {} };
+triggerManager.recordMovementCostIssue(costIssue);
+triggerManager.recordMovementCostIssue(costIssue);
+assert.equal(triggerManager.diagnosticsForScene(triggerScene.id).filter(item => item.code === costIssue.code).length, 1);
 triggerManager.scenes.set(triggerScene.id, { status: "active", sceneId: triggerScene.id,
   canonicalGeneration: triggerGeneration });
 assert.equal(triggerManager.handleTokenMovement(triggerToken, triggerMovement).events.length, 1);

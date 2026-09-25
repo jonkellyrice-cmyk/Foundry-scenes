@@ -36,6 +36,7 @@ jobs:
           test -f scripts/battlefield-dynamics-diagnostics.mjs
           test -f scripts/battlefield-dynamics-spatial.mjs
           test -f scripts/battlefield-dynamics-triggers.mjs
+          test -f scripts/battlefield-dynamics-movement-cost.mjs
           test -f scripts/battlefield-dynamics-runtime.mjs
           test -f scripts/live-scene-feed.mjs
           test -f scripts/scene-library.mjs
@@ -61,6 +62,7 @@ jobs:
           node --check scripts/battlefield-dynamics-diagnostics.mjs
           node --check scripts/battlefield-dynamics-spatial.mjs
           node --check scripts/battlefield-dynamics-triggers.mjs
+          node --check scripts/battlefield-dynamics-movement-cost.mjs
           node --check scripts/battlefield-dynamics-runtime.mjs
           node --check scripts/live-scene-feed.mjs
           node --check scripts/scene-library.mjs
@@ -75,7 +77,7 @@ jobs:
           mkdir -p dist/package/assets dist/package/scripts dist/package/styles dist/package/templates
           cp module.json README.md dist/package/
           cp -R assets/comic dist/package/assets/comic
-          cp scripts/battlefield-dynamics-contract.mjs scripts/battlefield-dynamics-diagnostics.mjs scripts/battlefield-dynamics-spatial.mjs scripts/battlefield-dynamics-triggers.mjs scripts/battlefield-dynamics-runtime.mjs scripts/live-scene-feed.mjs scripts/scene-library.mjs scripts/comic-book-maker.mjs dist/package/scripts/
+          cp scripts/battlefield-dynamics-contract.mjs scripts/battlefield-dynamics-diagnostics.mjs scripts/battlefield-dynamics-spatial.mjs scripts/battlefield-dynamics-triggers.mjs scripts/battlefield-dynamics-movement-cost.mjs scripts/battlefield-dynamics-runtime.mjs scripts/live-scene-feed.mjs scripts/scene-library.mjs scripts/comic-book-maker.mjs dist/package/scripts/
           cp styles/scene-library.css styles/live-scene-feed.css dist/package/styles/
           cp templates/scene-library.hbs dist/package/templates/
           (
@@ -101,6 +103,7 @@ jobs:
           test -s dist/verify/scripts/battlefield-dynamics-diagnostics.mjs
           test -s dist/verify/scripts/battlefield-dynamics-spatial.mjs
           test -s dist/verify/scripts/battlefield-dynamics-triggers.mjs
+          test -s dist/verify/scripts/battlefield-dynamics-movement-cost.mjs
           test -s dist/verify/scripts/battlefield-dynamics-runtime.mjs
           test -s dist/verify/scripts/live-scene-feed.mjs
           test -s dist/verify/scripts/scene-library.mjs
@@ -114,6 +117,7 @@ jobs:
           node --check dist/verify/scripts/battlefield-dynamics-diagnostics.mjs
           node --check dist/verify/scripts/battlefield-dynamics-spatial.mjs
           node --check dist/verify/scripts/battlefield-dynamics-triggers.mjs
+          node --check dist/verify/scripts/battlefield-dynamics-movement-cost.mjs
           node --check dist/verify/scripts/battlefield-dynamics-runtime.mjs
           node --check dist/verify/scripts/live-scene-feed.mjs
           node --check dist/verify/scripts/scene-library.mjs
