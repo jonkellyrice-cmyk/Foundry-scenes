@@ -38,6 +38,8 @@ jobs:
           node --check scripts/battlefield-dynamics-diagnostics.test.mjs
           node --check scripts/battlefield-dynamics-spatial.mjs
           node --check scripts/battlefield-dynamics-spatial.test.mjs
+          node --check scripts/battlefield-dynamics-triggers.mjs
+          node --check scripts/battlefield-dynamics-triggers.test.mjs
           node --check scripts/battlefield-dynamics-runtime.mjs
           node --check scripts/battlefield-dynamics-runtime.test.mjs
           node --check scripts/live-scene-feed.mjs
