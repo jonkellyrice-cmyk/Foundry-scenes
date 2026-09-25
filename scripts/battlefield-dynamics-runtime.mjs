@@ -6,6 +6,7 @@ import {
   diagnoseBattlefieldDynamicsSocketFailure,
 } from "./battlefield-dynamics-diagnostics.mjs";
 import { reconcileBattlefieldDynamicsAreaRegions } from "./battlefield-dynamics-spatial.mjs";
+import { BattlefieldDynamicsTriggerLedger, normalizeBattlefieldDynamicsMovement } from "./battlefield-dynamics-triggers.mjs";
 import { MODULE_ID } from "./live-scene-feed.mjs";
 
 export const BATTLEFIELD_DYNAMICS_RUNTIME_VERSION = 1;
@@ -290,6 +291,8 @@ export class BattlefieldDynamicsRuntimeManager {
     this.scenes = new Map();
     this.diagnostics = new BattlefieldDynamicsDiagnosticsRegistry();
     this.socketRegistered = false;
+    this.triggerLedger = new BattlefieldDynamicsTriggerLedger();
+    this.triggerEvents = [];
     this._socketHandler = message => this.receiveSocketMessage(message);
   }
 
@@ -392,6 +395,8 @@ export class BattlefieldDynamicsRuntimeManager {
     const id = typeof sceneOrId === "string" ? sceneOrId : sceneId(sceneOrId);
     if (!nonEmpty(id)) return false;
     const disposed = this.scenes.delete(id);
+    this.triggerLedger.clearScene(id);
+    this.triggerEvents = this.triggerEvents.filter(event => event.sceneId !== id);
     this.diagnostics.clearScene(id);
     return disposed;
   }
@@ -403,6 +408,23 @@ export class BattlefieldDynamicsRuntimeManager {
 
   listSceneRuntimes() {
     return Array.from(this.scenes.values());
+  }
+
+  handleTokenMovement(token, movement) {
+    if (!this.isAuthoritativeGM()) return { events: [], issues: [], reason: "not-authoritative-gm" };
+    const scene = token?.parent;
+    const runtime = this.runtimeForScene(scene);
+    if (!runtime) return { events: [], issues: [], reason: "runtime-inactive" };
+    const normalized = normalizeBattlefieldDynamicsMovement(scene, runtime, token, movement);
+    for (const diagnostic of normalized.issues) this.diagnostics.recordEvent(createBattlefieldDynamicsDiagnostic(diagnostic));
+    const events = normalized.events.filter(event => this.triggerLedger.accept(event));
+    this.triggerEvents.push(...events);
+    if (this.triggerEvents.length > 1000) this.triggerEvents.splice(0, this.triggerEvents.length - 1000);
+    return { events, issues: normalized.issues, reason: "normalized" };
+  }
+
+  drainTriggerEvents() {
+    return this.triggerEvents.splice(0);
   }
 
   isAuthoritativeGM() {
@@ -477,6 +499,14 @@ export function installBattlefieldDynamicsRuntime({ HooksRef = globalThis.Hooks,
 
   HooksRef.on("deleteScene", scene => {
     battlefieldDynamicsRuntimeManager.disposeScene(scene);
+  });
+
+  HooksRef.on("moveToken", (token, movement) => {
+    try {
+      battlefieldDynamicsRuntimeManager.handleTokenMovement(token, movement);
+    } catch (error) {
+      logLifecycleError("token movement normalization", error);
+    }
   });
 
   return battlefieldDynamicsRuntimeManager;

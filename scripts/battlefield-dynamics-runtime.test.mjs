@@ -17,6 +17,8 @@ import {
   isAuthoritativeGM,
   serializeBattlefieldDynamicsRuntimeState,
 } from "./battlefield-dynamics-runtime.mjs";
+import { BATTLEFIELD_DYNAMICS_PROJECTION_FLAG, BATTLEFIELD_DYNAMICS_PROJECTION_OWNERSHIP,
+  buildBattlefieldDynamicsAreaProjectionPlan } from "./battlefield-dynamics-spatial.mjs";
 
 const MODULE_ID = "orphaned-sun-scenes";
 
@@ -279,6 +281,49 @@ assert.equal(designatedActiveGM({ users }), gm1);
 assert.equal(isAuthoritativeGM({ users, user: gm1 }), true);
 assert.equal(isAuthoritativeGM({ users, user: gm2 }), false);
 assert.equal(isAuthoritativeGM({ users, user: player }), false);
+
+const triggerScene = { id: "trigger-scene" };
+const triggerInstance = { key: "instance-1", environmentId: "Open Field", physicalContextId: "road",
+  dynamicId: "wind", sourceApplicationId: "application-1" };
+const triggerInstruction = { key: "instruction-1", instanceKey: "instance-1", sourceApplicationId: "application-1",
+  source: "effect", kind: "hazard-effect", ruleId: "rule-1", triggerId: "trigger-1", trigger: { kind: "on-enter" },
+  resolvedSupport: { kind: "source-application" } };
+const triggerGeneration = { executionHandoff: { instructions: [triggerInstruction] },
+  applicationComposition: { instances: [triggerInstance], spatialGroups: [
+    { instanceKeys: [triggerInstance.key], cells: [{ col: 0, row: 0 }] },
+  ] } };
+const triggerProjection = buildBattlefieldDynamicsAreaProjectionPlan(triggerGeneration).projections[0];
+triggerScene.regions = [{ id: "projection-1", getFlag(scope, key) {
+  return scope === MODULE_ID && key === BATTLEFIELD_DYNAMICS_PROJECTION_FLAG ? {
+    version: 1, ownership: BATTLEFIELD_DYNAMICS_PROJECTION_OWNERSHIP,
+    sceneId: triggerScene.id, projectionKey: triggerProjection.projectionKey,
+    cellSignature: triggerProjection.cellSignature, owners: [{
+      instanceKey: triggerInstance.key, sourceApplicationId: triggerInstance.sourceApplicationId,
+      physicalContextId: triggerInstance.physicalContextId, dynamicId: triggerInstance.dynamicId,
+      instructionKey: triggerInstruction.key, ruleId: triggerInstruction.ruleId,
+      source: triggerInstruction.source, kind: triggerInstruction.kind,
+    }],
+  } : null;
+} }];
+const triggerToken = { id: "large-unit", parent: triggerScene,
+  testInsideRegion(_region, point) { return point.x > 0; },
+  segmentizeRegionMovementPath(_region, waypoints) {
+    return [{ type: 1, from: waypoints[0], to: waypoints[1] }];
+  } };
+const triggerMovement = { id: "move-1", origin: { x: 0, y: 0 }, destination: { x: 1, y: 0 },
+  passed: { waypoints: [{ x: 0, y: 0 }, { x: 1, y: 0 }] } };
+const triggerManager = new BattlefieldDynamicsRuntimeManager({ gameRef: { users, user: gm1 } });
+triggerManager.scenes.set(triggerScene.id, { status: "active", sceneId: triggerScene.id,
+  canonicalGeneration: triggerGeneration });
+assert.equal(triggerManager.handleTokenMovement(triggerToken, triggerMovement).events.length, 1);
+assert.equal(triggerManager.handleTokenMovement(triggerToken, triggerMovement).events.length, 0);
+assert.equal(triggerManager.drainTriggerEvents().length, 1);
+assert.deepEqual(triggerManager.drainTriggerEvents(), []);
+triggerManager.game.user = gm2;
+assert.equal(triggerManager.handleTokenMovement(triggerToken, { ...triggerMovement, id: "move-2" }).reason, "not-authoritative-gm");
+triggerManager.game.user = gm1;
+triggerManager.disposeScene(triggerScene);
+assert.equal(triggerManager.handleTokenMovement(triggerToken, triggerMovement).reason, "runtime-inactive");
 
 let socketNamespace = null;
 let socketHandler = null;
