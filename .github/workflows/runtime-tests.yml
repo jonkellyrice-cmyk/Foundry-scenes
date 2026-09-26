@@ -48,6 +48,8 @@ jobs:
           node --check scripts/battlefield-dynamics-forced-movement.test.mjs
           node --check scripts/battlefield-dynamics-momentum.mjs
           node --check scripts/battlefield-dynamics-momentum.test.mjs
+          node --check scripts/battlefield-dynamics-momentum-state.mjs
+          node --check scripts/battlefield-dynamics-momentum-state.test.mjs
           node --check scripts/battlefield-dynamics-runtime.mjs
           node --check scripts/battlefield-dynamics-runtime.test.mjs
           node --check scripts/live-scene-feed.mjs

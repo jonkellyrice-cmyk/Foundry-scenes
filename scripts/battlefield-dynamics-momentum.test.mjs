@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { normalizeBattlefieldDynamicsMomentum, resolveBattlefieldDynamicsMomentumVector } from "./battlefield-dynamics-momentum.mjs";
+import { battlefieldDynamicsMomentumIntentCanResolve, normalizeBattlefieldDynamicsMomentum,
+  resolveBattlefieldDynamicsMomentumVector } from "./battlefield-dynamics-momentum.mjs";
 import { BATTLEFIELD_DYNAMICS_MOMENTUM_EXECUTION } from "./battlefield-dynamics-contract.mjs";
 
 const identity = { environmentId: "Outer Space", physicalContextId: "void", dynamicId: "drift", sourceApplicationId: "app-a" };
@@ -29,6 +30,8 @@ operation.execution = { stateSource: "incoming-movement", timing: "on-trigger", 
 const typed = normalizeBattlefieldDynamicsMomentum(scene, runtime, token, event);
 assert.deepEqual(typed.intent.operation.execution, operation.execution);
 assert.deepEqual(typed.intent.unresolved, ["momentum-velocity-state-unavailable"]);
+assert.equal(battlefieldDynamicsMomentumIntentCanResolve(typed.intent), true);
+assert.equal(battlefieldDynamicsMomentumIntentCanResolve({ ...typed.intent, adjudication: "gm-confirmed" }), false);
 
 const source = { q: 2, r: -2, s: 0 };
 const brake = { q: -1, r: 1, s: 0 };

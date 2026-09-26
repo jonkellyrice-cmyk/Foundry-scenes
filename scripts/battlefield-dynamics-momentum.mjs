@@ -8,6 +8,13 @@ const add = (a, b) => ({ q: a.q + b.q, r: a.r + b.r, s: a.s + b.s });
 const subtract = (a, b) => ({ q: a.q - b.q, r: a.r - b.r, s: a.s - b.s });
 const length = value => Math.max(Math.abs(value.q), Math.abs(value.r), Math.abs(value.s));
 
+export function battlefieldDynamicsMomentumIntentCanResolve(intent) {
+  return intent?.adjudication === "automatic" && Array.isArray(intent.requiredInputs)
+    && intent.requiredInputs.length === 0 && Array.isArray(intent.unresolved)
+    && intent.unresolved.every(field => field === "momentum-velocity-state-unavailable")
+    && intent.operation?.execution?.resolutionLaw === "hex-vector-addition";
+}
+
 /** Native grid conversion keeps signed vector composition valid across odd-row parity. */
 export function resolveBattlefieldDynamicsMomentumVector(grid, anchor, source, attempted, operation) {
   if (!cube(source) || !cube(attempted) || !["preserve", "stop", "redirect", "bias"].includes(operation?.mode)) {

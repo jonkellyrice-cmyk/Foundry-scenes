@@ -13,8 +13,9 @@
     "test:battlefield-dynamics-movement-ledger": "node scripts/battlefield-dynamics-movement-ledger.test.mjs",
     "test:battlefield-dynamics-forced-movement": "node scripts/battlefield-dynamics-forced-movement.test.mjs",
     "test:battlefield-dynamics-momentum": "node scripts/battlefield-dynamics-momentum.test.mjs",
+    "test:battlefield-dynamics-momentum-state": "node scripts/battlefield-dynamics-momentum-state.test.mjs",
     "test:battlefield-dynamics-runtime": "node scripts/battlefield-dynamics-runtime.test.mjs",
     "test:scene-feed": "node scripts/live-scene-feed.test.mjs",
-    "test:runtime": "npm run test:battlefield-dynamics-contract && npm run test:battlefield-dynamics-diagnostics && npm run test:battlefield-dynamics-spatial && npm run test:battlefield-dynamics-triggers && npm run test:battlefield-dynamics-movement-cost && npm run test:battlefield-dynamics-movement-ledger && npm run test:battlefield-dynamics-forced-movement && npm run test:battlefield-dynamics-momentum && npm run test:battlefield-dynamics-runtime && npm run test:scene-feed"
+    "test:runtime": "npm run test:battlefield-dynamics-contract && npm run test:battlefield-dynamics-diagnostics && npm run test:battlefield-dynamics-spatial && npm run test:battlefield-dynamics-triggers && npm run test:battlefield-dynamics-movement-cost && npm run test:battlefield-dynamics-movement-ledger && npm run test:battlefield-dynamics-forced-movement && npm run test:battlefield-dynamics-momentum && npm run test:battlefield-dynamics-momentum-state && npm run test:battlefield-dynamics-runtime && npm run test:scene-feed"
   }
 }
