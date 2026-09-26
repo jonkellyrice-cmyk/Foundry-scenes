@@ -507,8 +507,16 @@ await ledgerManager.setMovementSpent(ledgerScene, "token", 4);
 assert.equal(ledgerManager.movementSpentForToken(ledgerScene, "token"), 4);
 await ledgerManager.recordCompletedMovement(ledgerToken, { ...ledgerMove, id: "move-2" });
 assert.equal(ledgerManager.movementSpentForToken(ledgerScene, "token"), 14);
+await ledgerManager.recordCompletedMovement(ledgerToken, { ...ledgerMove, id: "move-2",
+  passed: { cost: 15, waypoints: [...ledgerMove.passed.waypoints, { x: 120, y: 0 }] } });
+assert.equal(ledgerManager.movementSpentForToken(ledgerScene, "token"), 19);
+const uncertain = await ledgerManager.recordCompletedMovement(ledgerToken, { ...ledgerMove, id: "move-2",
+  passed: { cost: 5, waypoints: [{ x: 300, y: 0 }, { x: 360, y: 0 }] } });
+assert.equal(uncertain.reason, "ambiguous-checkpoint");
+assert.equal(ledgerManager.movementSpentForToken(ledgerScene, "token"), 19);
+assert.ok(ledgerManager.diagnosticsForScene(ledgerScene).some(item => item.code === "movement-ledger-checkpoint-ambiguous"));
 ledgerGame.user = { id: "player", isGM: false };
 assert.equal((await ledgerManager.recordCompletedMovement(ledgerToken, { ...ledgerMove, id: "move-3" })).changed, false);
-assert.equal(ledgerManager.movementSpentForToken(ledgerScene, "token"), 14);
+assert.equal(ledgerManager.movementSpentForToken(ledgerScene, "token"), 19);
 
 console.log("battlefield dynamics runtime rehydration, spatial, and diagnostics integration tests passed");
