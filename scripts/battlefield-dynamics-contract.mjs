@@ -1,4 +1,13 @@
 export const BATTLEFIELD_DYNAMICS_HANDOFF_VERSION = 1;
+export const BATTLEFIELD_DYNAMICS_FORCED_MOVEMENT_GEOMETRY = Object.freeze({
+  coordinateFrame: "odd-row-offset-hex",
+  tokenAnchor: "top-left-occupied-grid-space",
+  hexOffset: "exact-target-offset-from-token-anchor",
+  distanceHex: "native-grid-hex-distance-between-anchor-and-target",
+  mismatch: "gm-confirmed-never-inferred",
+  unresolvedVector: "gm-confirmed-never-inferred",
+  fractionalDistance: "gm-confirmed-never-inferred",
+});
 
 export const BATTLEFIELD_DYNAMICS_REQUIRED_INPUTS = Object.freeze([
   "support-target",
@@ -289,6 +298,7 @@ function assertContract(value) {
   assertBoolean(contract.preservesApplicationIdentity, true, "contract.preservesApplicationIdentity");
   assertBoolean(contract.preservesExactSpatialMembership, true, "contract.preservesExactSpatialMembership");
   assertBoolean(contract.preservesIndependentRuleContributions, true, "contract.preservesIndependentRuleContributions");
+  if (contract.forcedMovementGeometry !== undefined && !sameJson(contract.forcedMovementGeometry, BATTLEFIELD_DYNAMICS_FORCED_MOVEMENT_GEOMETRY)) fail("contract.forcedMovementGeometry is unsupported.");
   assertBoolean(contract.ownsMutableRuntimeState, false, "contract.ownsMutableRuntimeState");
   assertBoolean(contract.ownsSitrepSemantics, false, "contract.ownsSitrepSemantics");
   assertBoolean(contract.ownsFoundryBehaviorAutomation, false, "contract.ownsFoundryBehaviorAutomation");
@@ -392,6 +402,10 @@ export function assertBattlefieldDynamicsExecutionHandoff(generation) {
     keys.add(instruction.key);
     return instruction;
   });
+  if (instructions.some(instruction => instruction.kind === "forced-movement" && instruction.adjudication === "automatic")
+    && !sameJson(handoff.contract.forcedMovementGeometry, BATTLEFIELD_DYNAMICS_FORCED_MOVEMENT_GEOMETRY)) {
+    fail("contract.forcedMovementGeometry is missing or unsupported for automatic forced movement.");
+  }
   handoff.environmentIntrinsicInstructions.forEach(assertEnvironmentIntrinsicInstruction);
   const automatic = instructions.filter(instruction => instruction.adjudication === "automatic").length;
   const gmConfirmed = instructions.length - automatic + handoff.environmentIntrinsicInstructions.length;
