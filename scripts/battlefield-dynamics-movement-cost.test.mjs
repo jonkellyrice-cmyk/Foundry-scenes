@@ -2,9 +2,12 @@ import assert from "node:assert/strict";
 import {
   battlefieldDynamicsMovementCostCatalog,
   composeBattlefieldDynamicsMovementCost,
+  completedBattlefieldDynamicsMovementCost,
   installBattlefieldDynamicsMovementCostAdapter,
   measureBattlefieldDynamicsGridStep,
 } from "./battlefield-dynamics-movement-cost.mjs";
+assert.equal(completedBattlefieldDynamicsMovementCost({ id: "m", passed: { cost: 5, waypoints: [{}, {}] } }), 5);
+assert.equal(completedBattlefieldDynamicsMovementCost({ id: "m", passed: { cost: NaN, waypoints: [{}, {}] } }), null);
 import { buildBattlefieldDynamicsAreaProjectionPlan,
   BATTLEFIELD_DYNAMICS_PROJECTION_FLAG, BATTLEFIELD_DYNAMICS_PROJECTION_OWNERSHIP } from "./battlefield-dynamics-spatial.mjs";
 

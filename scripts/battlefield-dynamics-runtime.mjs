@@ -8,6 +8,8 @@ import {
 import { reconcileBattlefieldDynamicsAreaRegions } from "./battlefield-dynamics-spatial.mjs";
 import { BattlefieldDynamicsTriggerLedger, normalizeBattlefieldDynamicsMovement } from "./battlefield-dynamics-triggers.mjs";
 import { battlefieldDynamicsMovementCostCatalog, installBattlefieldDynamicsMovementCostAdapter } from "./battlefield-dynamics-movement-cost.mjs";
+import { applyBattlefieldDynamicsMovement, adjustBattlefieldDynamicsMovement,
+  readBattlefieldDynamicsMovementLedger, BATTLEFIELD_DYNAMICS_MOVEMENT_LEDGER_FLAG } from "./battlefield-dynamics-movement-ledger.mjs";
 import { MODULE_ID } from "./live-scene-feed.mjs";
 
 export const BATTLEFIELD_DYNAMICS_RUNTIME_VERSION = 1;
@@ -295,6 +297,7 @@ export class BattlefieldDynamicsRuntimeManager {
     this.triggerLedger = new BattlefieldDynamicsTriggerLedger();
     this.triggerEvents = [];
     this.movementCostIssueKeys = new Set();
+    this.movementLedgerWrites = new Map();
     this._socketHandler = message => this.receiveSocketMessage(message);
   }
 
@@ -421,6 +424,42 @@ export class BattlefieldDynamicsRuntimeManager {
     return Array.from(this.scenes.values());
   }
 
+  movementSpentForToken(sceneOrId, tokenId) {
+    const scene = this.sceneDocument(sceneOrId);
+    return readBattlefieldDynamicsMovementLedger(scene).tokens[tokenId]?.spent ?? 0;
+  }
+
+  queueMovementLedgerWrite(scene, update) {
+    const id = sceneId(scene);
+    const previous = this.movementLedgerWrites.get(id) ?? Promise.resolve();
+    const task = previous.catch(() => {}).then(async () => {
+      if (!this.isAuthoritativeGM() || !this.runtimeForScene(scene)) return { changed: false, reason: "not-authoritative-or-inactive" };
+      const current = readBattlefieldDynamicsMovementLedger(scene);
+      const result = update(current);
+      if (result.changed) {
+        if (typeof scene.setFlag !== "function") throw new Error("Scene cannot persist movement spent.");
+        await scene.setFlag(MODULE_ID, BATTLEFIELD_DYNAMICS_MOVEMENT_LEDGER_FLAG, result.ledger);
+      }
+      return result;
+    });
+    this.movementLedgerWrites.set(id, task);
+    void task.finally(() => { if (this.movementLedgerWrites.get(id) === task) this.movementLedgerWrites.delete(id); }).catch(() => {});
+    return task;
+  }
+
+  recordCompletedMovement(token, movement) {
+    const scene = token?.parent;
+    if (!scene || !this.isAuthoritativeGM() || !this.runtimeForScene(scene)) return Promise.resolve({ changed: false, reason: "not-authoritative-or-inactive" });
+    return this.queueMovementLedgerWrite(scene, ledger => applyBattlefieldDynamicsMovement(ledger, token.id, movement));
+  }
+
+  setMovementSpent(sceneOrId, tokenId, spent) {
+    const scene = this.sceneDocument(sceneOrId);
+    if (!scene || !this.isAuthoritativeGM()) return Promise.resolve({ changed: false, reason: "not-authoritative-or-unavailable" });
+    return this.queueMovementLedgerWrite(scene, ledger => ({ changed: true,
+      ledger: adjustBattlefieldDynamicsMovement(ledger, tokenId, spent), reason: "gm-adjustment" }));
+  }
+
   handleTokenMovement(token, movement) {
     if (!this.isAuthoritativeGM()) return { events: [], issues: [], reason: "not-authoritative-gm" };
     const scene = token?.parent;
@@ -525,6 +564,8 @@ export function installBattlefieldDynamicsRuntime({ HooksRef = globalThis.Hooks,
   HooksRef.on("moveToken", (token, movement) => {
     try {
       battlefieldDynamicsRuntimeManager.handleTokenMovement(token, movement);
+      void battlefieldDynamicsRuntimeManager.recordCompletedMovement(token, movement)
+        .catch(error => logLifecycleError("movement ledger persistence", error));
     } catch (error) {
       logLifecycleError("token movement normalization", error);
     }

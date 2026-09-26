@@ -493,4 +493,22 @@ assert.equal(installed.runtimeForScene("ready-scene"), null);
 assert.deepEqual(installed.diagnosticsForScene("ready-scene"), []);
 delete globalThis.game;
 
+const ledgerScene = sceneDocument(executableScene("ledger-scene"));
+const ledgerGame = { user: { id: "gm", isGM: true }, users: { activeGM: { id: "gm", isGM: true } },
+  scenes: new Map([[ledgerScene.id, ledgerScene]]) };
+const ledgerManager = new BattlefieldDynamicsRuntimeManager({ gameRef: ledgerGame });
+await ledgerManager.bootstrapScene(ledgerScene);
+const ledgerToken = { id: "token", parent: ledgerScene };
+const ledgerMove = { id: "move-1", passed: { cost: 10, waypoints: [{ x: 0, y: 0 }, { x: 60, y: 0 }] } };
+await Promise.all([ledgerManager.recordCompletedMovement(ledgerToken, ledgerMove),
+  ledgerManager.recordCompletedMovement(ledgerToken, ledgerMove)]);
+assert.equal(ledgerManager.movementSpentForToken(ledgerScene, "token"), 10);
+await ledgerManager.setMovementSpent(ledgerScene, "token", 4);
+assert.equal(ledgerManager.movementSpentForToken(ledgerScene, "token"), 4);
+await ledgerManager.recordCompletedMovement(ledgerToken, { ...ledgerMove, id: "move-2" });
+assert.equal(ledgerManager.movementSpentForToken(ledgerScene, "token"), 14);
+ledgerGame.user = { id: "player", isGM: false };
+assert.equal((await ledgerManager.recordCompletedMovement(ledgerToken, { ...ledgerMove, id: "move-3" })).changed, false);
+assert.equal(ledgerManager.movementSpentForToken(ledgerScene, "token"), 14);
+
 console.log("battlefield dynamics runtime rehydration, spatial, and diagnostics integration tests passed");
