@@ -9,6 +9,7 @@ import { reconcileBattlefieldDynamicsAreaRegions } from "./battlefield-dynamics-
 import { BattlefieldDynamicsTriggerLedger, normalizeBattlefieldDynamicsMovement } from "./battlefield-dynamics-triggers.mjs";
 import { battlefieldDynamicsMovementCostCatalog, installBattlefieldDynamicsMovementCostAdapter } from "./battlefield-dynamics-movement-cost.mjs";
 import { executeBattlefieldDynamicsForcedMovement, planBattlefieldDynamicsForcedMovement } from "./battlefield-dynamics-forced-movement.mjs";
+import { normalizeBattlefieldDynamicsMomentum } from "./battlefield-dynamics-momentum.mjs";
 import { applyBattlefieldDynamicsMovement, adjustBattlefieldDynamicsMovement,
   readBattlefieldDynamicsMovementLedger, BATTLEFIELD_DYNAMICS_MOVEMENT_LEDGER_FLAG } from "./battlefield-dynamics-movement-ledger.mjs";
 import { MODULE_ID } from "./live-scene-feed.mjs";
@@ -297,6 +298,7 @@ export class BattlefieldDynamicsRuntimeManager {
     this.socketRegistered = false;
     this.triggerLedger = new BattlefieldDynamicsTriggerLedger();
     this.triggerEvents = [];
+    this.momentumIntents = [];
     this.movementCostIssueKeys = new Set();
     this.movementLedgerWrites = new Map();
     this.forcedMovementInFlight = new Set();
@@ -414,6 +416,7 @@ export class BattlefieldDynamicsRuntimeManager {
     this.triggerLedger.clearScene(id);
     for (const key of this.forcedMovementProcessed) if (key.startsWith(`${id}:`)) this.forcedMovementProcessed.delete(key);
     this.triggerEvents = this.triggerEvents.filter(event => event.sceneId !== id);
+    this.momentumIntents = this.momentumIntents.filter(intent => intent.sceneId !== id);
     for (const key of this.movementCostIssueKeys) if (key.includes(`"${id}"`)) this.movementCostIssueKeys.delete(key);
     this.diagnostics.clearScene(id);
     return disposed;
@@ -482,6 +485,14 @@ export class BattlefieldDynamicsRuntimeManager {
     const events = normalized.events.filter(event => this.triggerLedger.accept(event));
     this.triggerEvents.push(...events);
     if (this.triggerEvents.length > 1000) this.triggerEvents.splice(0, this.triggerEvents.length - 1000);
+    const momentumEvents = events.filter(event => runtime.canonicalGeneration.executionHandoff?.instructions
+      ?.some(instruction => instruction.key === event.instructionKey && instruction.kind === "momentum-effect"));
+    for (const event of momentumEvents) {
+      const normalizedMomentum = normalizeBattlefieldDynamicsMomentum(scene, runtime, token, event);
+      for (const issue of normalizedMomentum.issues) this.recordMovementCostIssue(issue);
+      if (normalizedMomentum.intent) this.momentumIntents.push(normalizedMomentum.intent);
+    }
+    if (this.momentumIntents.length > 1000) this.momentumIntents.splice(0, this.momentumIntents.length - 1000);
     return { events, issues: normalized.issues, reason: "normalized" };
   }
 
@@ -531,6 +542,10 @@ export class BattlefieldDynamicsRuntimeManager {
 
   drainTriggerEvents() {
     return this.triggerEvents.splice(0);
+  }
+
+  drainMomentumIntents() {
+    return this.momentumIntents.splice(0);
   }
 
   isAuthoritativeGM() {

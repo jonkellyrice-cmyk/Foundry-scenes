@@ -553,4 +553,28 @@ assert.deepEqual(await forcedManager.executeForcedMovementEvents(forcedToken, [f
 assert.equal(forcedManager.diagnosticsForScene(forcedScene).at(-1).code, "forced-movement-overlap-ambiguous");
 globalThis.canvas = previousCanvas;
 
+const momentumInstruction = { ...forcedInstruction, key: "momentum-instruction", kind: "momentum-effect",
+  resolvedSupport: { kind: "source-application" },
+  descriptor: { operation: { kind: "momentum-effect", mode: "preserve" } } };
+const momentumGeneration = { executionHandoff: { instructions: [momentumInstruction] },
+  applicationComposition: { instances: [forcedInstance], spatialGroups: [
+    { instanceKeys: [forcedInstance.key], cells: [{ col: 0, row: 0 }] },
+  ] } };
+const momentumProjection = buildBattlefieldDynamicsAreaProjectionPlan(momentumGeneration).projections[0];
+const momentumScene = { id: "momentum-scene", regions: [{ id: "momentum-region", getFlag(scope, name) {
+  return scope === MODULE_ID && name === BATTLEFIELD_DYNAMICS_PROJECTION_FLAG ? {
+    version: 1, ownership: BATTLEFIELD_DYNAMICS_PROJECTION_OWNERSHIP, sceneId: "momentum-scene",
+    projectionKey: momentumProjection.projectionKey, cellSignature: momentumProjection.cellSignature,
+    owners: momentumProjection.owners,
+  } : null;
+} }] };
+const momentumToken = { ...triggerToken, id: "momentum-token", parent: momentumScene };
+const momentumManager = new BattlefieldDynamicsRuntimeManager({ gameRef: ledgerGame });
+momentumManager.scenes.set(momentumScene.id, { status: "active", sceneId: momentumScene.id,
+  canonicalGeneration: momentumGeneration });
+assert.equal(momentumManager.handleTokenMovement(momentumToken, triggerMovement).events.length, 1);
+assert.equal(momentumManager.drainMomentumIntents().length, 1);
+assert.deepEqual(momentumManager.drainMomentumIntents(), []);
+assert.equal(momentumManager.diagnosticsForScene(momentumScene).at(-1).code, "momentum-execution-unresolved");
+
 console.log("battlefield dynamics runtime rehydration, spatial, and diagnostics integration tests passed");
