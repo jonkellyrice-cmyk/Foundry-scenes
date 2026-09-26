@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   BATTLEFIELD_DYNAMICS_EFFECT_KINDS,
   BATTLEFIELD_DYNAMICS_FORCED_MOVEMENT_GEOMETRY,
+  BATTLEFIELD_DYNAMICS_MOMENTUM_EXECUTION,
   BATTLEFIELD_DYNAMICS_GENERATION_KINDS,
   BATTLEFIELD_DYNAMICS_TRIGGER_KINDS,
   assertBattlefieldDynamicsExecutionHandoff,
@@ -22,6 +23,7 @@ const contract = {
   preservesExactSpatialMembership: true,
   preservesIndependentRuleContributions: true,
   forcedMovementGeometry: { ...BATTLEFIELD_DYNAMICS_FORCED_MOVEMENT_GEOMETRY },
+  momentumExecution: structuredClone(BATTLEFIELD_DYNAMICS_MOMENTUM_EXECUTION),
   ownsMutableRuntimeState: false,
   ownsSitrepSemantics: false,
   ownsFoundryBehaviorAutomation: false,

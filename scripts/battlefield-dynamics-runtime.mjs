@@ -487,13 +487,17 @@ export class BattlefieldDynamicsRuntimeManager {
     if (this.triggerEvents.length > 1000) this.triggerEvents.splice(0, this.triggerEvents.length - 1000);
     const momentumEvents = events.filter(event => runtime.canonicalGeneration.executionHandoff?.instructions
       ?.some(instruction => instruction.key === event.instructionKey && instruction.kind === "momentum-effect"));
+    const momentumIntents = [];
     for (const event of momentumEvents) {
       const normalizedMomentum = normalizeBattlefieldDynamicsMomentum(scene, runtime, token, event);
       for (const issue of normalizedMomentum.issues) this.recordMovementCostIssue(issue);
-      if (normalizedMomentum.intent) this.momentumIntents.push(normalizedMomentum.intent);
+      if (normalizedMomentum.intent) {
+        this.momentumIntents.push(normalizedMomentum.intent);
+        momentumIntents.push(normalizedMomentum.intent);
+      }
     }
     if (this.momentumIntents.length > 1000) this.momentumIntents.splice(0, this.momentumIntents.length - 1000);
-    return { events, issues: normalized.issues, reason: "normalized" };
+    return { events, momentumIntents, issues: normalized.issues, reason: "normalized" };
   }
 
   async executeForcedMovementEvents(token, events) {

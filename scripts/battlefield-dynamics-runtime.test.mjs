@@ -572,8 +572,12 @@ const momentumToken = { ...triggerToken, id: "momentum-token", parent: momentumS
 const momentumManager = new BattlefieldDynamicsRuntimeManager({ gameRef: ledgerGame });
 momentumManager.scenes.set(momentumScene.id, { status: "active", sceneId: momentumScene.id,
   canonicalGeneration: momentumGeneration });
-assert.equal(momentumManager.handleTokenMovement(momentumToken, triggerMovement).events.length, 1);
-assert.equal(momentumManager.drainMomentumIntents().length, 1);
+const momentumMovement = momentumManager.handleTokenMovement(momentumToken, triggerMovement);
+assert.equal(momentumMovement.events.length, 1);
+assert.equal(momentumMovement.momentumIntents.length, 1);
+assert.equal(momentumMovement.momentumIntents[0].identity.sourceApplicationId, momentumInstruction.sourceApplicationId);
+assert.ok(momentumMovement.momentumIntents[0].unresolved.includes("momentum-velocity-state-unavailable"));
+assert.deepEqual(momentumManager.drainMomentumIntents(), momentumMovement.momentumIntents);
 assert.deepEqual(momentumManager.drainMomentumIntents(), []);
 assert.equal(momentumManager.diagnosticsForScene(momentumScene).at(-1).code, "momentum-execution-unresolved");
 

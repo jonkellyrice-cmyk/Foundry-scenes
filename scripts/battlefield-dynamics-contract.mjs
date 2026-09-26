@@ -1,4 +1,21 @@
 export const BATTLEFIELD_DYNAMICS_HANDOFF_VERSION = 1;
+export const BATTLEFIELD_DYNAMICS_MOMENTUM_EXECUTION = Object.freeze({
+  requiredFields: ["stateSource", "timing", "lifetime", "resolutionLaw"],
+  coordinateFrame: "native-hex-cube-displacement",
+  authoredVector: "odd-row-offset-from-token-anchor-converted-to-cube",
+  velocityState: "token-scoped-signed-cube-displacement-per-movement",
+  incomingMovement: "prior-completed-movement-segment-cube-displacement",
+  thrust: "attempted-movement-cube-displacement",
+  composition: "resultant-velocity=mode-velocity+attempted-movement-cube-displacement",
+  oppositeThrust: "signed-vector-addition-reduces-opposing-component",
+  preserve: "mode-velocity=source-velocity",
+  stop: "mode-velocity=zero-offset",
+  redirect: "mode-velocity=authored-exact-cube-displacement-of-equal-native-hex-length",
+  bias: "mode-velocity=source-velocity+authored-exact-cube-displacement",
+  biasRequiresStrengthHex: true,
+  unsupported: "gm-confirmed-never-inferred",
+  incomplete: "gm-confirmed-never-inferred",
+});
 export const BATTLEFIELD_DYNAMICS_FORCED_MOVEMENT_GEOMETRY = Object.freeze({
   coordinateFrame: "odd-row-offset-hex",
   tokenAnchor: "top-left-occupied-grid-space",
@@ -225,6 +242,16 @@ export function assertBattlefieldDynamicsOperation(value, expectedKind = null, l
       if (["redirect", "bias"].includes(operation.mode) && !operation.vector) fail(`${label}.vector is required for ${operation.mode}.`);
       if (operation.vector) assertVector(operation.vector, `${label}.vector`);
       if (operation.distanceHex !== undefined && !nonNegative(operation.distanceHex)) fail(`${label}.distanceHex must be non-negative.`);
+      if (operation.execution !== undefined) {
+        const execution = assertRecord(operation.execution, `${label}.execution`);
+        if (!["incoming-movement", "current-runtime-state"].includes(execution.stateSource)) fail(`${label}.execution.stateSource is invalid.`);
+        if (!["on-trigger", "next-movement"].includes(execution.timing)) fail(`${label}.execution.timing is invalid.`);
+        if (!["single-resolution", "until-next-movement"].includes(execution.lifetime)) fail(`${label}.execution.lifetime is invalid.`);
+        if (execution.resolutionLaw !== "hex-vector-addition") fail(`${label}.execution.resolutionLaw is invalid.`);
+        if (["redirect", "bias"].includes(operation.mode) && operation.vector?.kind !== "hex-offset") fail(`${label}.vector requires an exact hex offset for automatic momentum.`);
+        if (operation.mode === "bias" && !positive(execution.biasStrengthHex)) fail(`${label}.execution.biasStrengthHex must be positive.`);
+        if (execution.biasStrengthHex !== undefined && !positive(execution.biasStrengthHex)) fail(`${label}.execution.biasStrengthHex must be positive.`);
+      }
       break;
     case "collision-effect":
       if (!["stop", "damage", "displace"].includes(operation.response)) fail(`${label}.response is invalid.`);
@@ -299,6 +326,7 @@ function assertContract(value) {
   assertBoolean(contract.preservesExactSpatialMembership, true, "contract.preservesExactSpatialMembership");
   assertBoolean(contract.preservesIndependentRuleContributions, true, "contract.preservesIndependentRuleContributions");
   if (contract.forcedMovementGeometry !== undefined && !sameJson(contract.forcedMovementGeometry, BATTLEFIELD_DYNAMICS_FORCED_MOVEMENT_GEOMETRY)) fail("contract.forcedMovementGeometry is unsupported.");
+  if (contract.momentumExecution !== undefined && !sameJson(contract.momentumExecution, BATTLEFIELD_DYNAMICS_MOMENTUM_EXECUTION)) fail("contract.momentumExecution is unsupported.");
   assertBoolean(contract.ownsMutableRuntimeState, false, "contract.ownsMutableRuntimeState");
   assertBoolean(contract.ownsSitrepSemantics, false, "contract.ownsSitrepSemantics");
   assertBoolean(contract.ownsFoundryBehaviorAutomation, false, "contract.ownsFoundryBehaviorAutomation");
