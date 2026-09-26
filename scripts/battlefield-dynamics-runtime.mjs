@@ -436,6 +436,12 @@ export class BattlefieldDynamicsRuntimeManager {
       if (!this.isAuthoritativeGM() || !this.runtimeForScene(scene)) return { changed: false, reason: "not-authoritative-or-inactive" };
       const current = readBattlefieldDynamicsMovementLedger(scene);
       const result = update(current);
+      if (result.reason === "ambiguous-checkpoint") {
+        this.recordMovementCostIssue({ code: "movement-ledger-checkpoint-ambiguous", category: "movement-ledger",
+          severity: "warning", automaticBlocked: true,
+          message: "The movement path changed under the same movement ID without a verifiable continuation; movement spent was not changed.",
+          provenance: { sceneId: id }, details: { movementId: result.movementId ?? null, tokenId: result.tokenId ?? null } });
+      }
       if (result.changed) {
         if (typeof scene.setFlag !== "function") throw new Error("Scene cannot persist movement spent.");
         await scene.setFlag(MODULE_ID, BATTLEFIELD_DYNAMICS_MOVEMENT_LEDGER_FLAG, result.ledger);
@@ -450,7 +456,9 @@ export class BattlefieldDynamicsRuntimeManager {
   recordCompletedMovement(token, movement) {
     const scene = token?.parent;
     if (!scene || !this.isAuthoritativeGM() || !this.runtimeForScene(scene)) return Promise.resolve({ changed: false, reason: "not-authoritative-or-inactive" });
-    return this.queueMovementLedgerWrite(scene, ledger => applyBattlefieldDynamicsMovement(ledger, token.id, movement));
+    return this.queueMovementLedgerWrite(scene, ledger => ({
+      ...applyBattlefieldDynamicsMovement(ledger, token.id, movement), movementId: movement?.id, tokenId: token.id,
+    }));
   }
 
   setMovementSpent(sceneOrId, tokenId, spent) {
