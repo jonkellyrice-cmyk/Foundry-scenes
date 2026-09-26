@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   BATTLEFIELD_DYNAMICS_EFFECT_KINDS,
+  BATTLEFIELD_DYNAMICS_FORCED_MOVEMENT_GEOMETRY,
   BATTLEFIELD_DYNAMICS_GENERATION_KINDS,
   BATTLEFIELD_DYNAMICS_TRIGGER_KINDS,
 } from "./battlefield-dynamics-contract.mjs";
@@ -32,6 +33,7 @@ const contract = {
   preservesApplicationIdentity: true,
   preservesExactSpatialMembership: true,
   preservesIndependentRuleContributions: true,
+  forcedMovementGeometry: { ...BATTLEFIELD_DYNAMICS_FORCED_MOVEMENT_GEOMETRY },
   ownsMutableRuntimeState: false,
   ownsSitrepSemantics: false,
   ownsFoundryBehaviorAutomation: false,
@@ -518,5 +520,37 @@ assert.ok(ledgerManager.diagnosticsForScene(ledgerScene).some(item => item.code 
 ledgerGame.user = { id: "player", isGM: false };
 assert.equal((await ledgerManager.recordCompletedMovement(ledgerToken, { ...ledgerMove, id: "move-3" })).changed, false);
 assert.equal(ledgerManager.movementSpentForToken(ledgerScene, "token"), 19);
+
+const forcedScene = { id: "forced-scene", grid: { type: 2 } };
+ledgerGame.user = { id: "gm", isGM: true };
+const forcedInstance = { key: "force-instance", environmentId: "Open Field", physicalContextId: "road",
+  dynamicId: "wind", sourceApplicationId: "force-app" };
+const forcedInstruction = { key: "force-instruction", instanceKey: forcedInstance.key,
+  sourceApplicationId: forcedInstance.sourceApplicationId, kind: "forced-movement", source: "effect",
+  triggerId: "entry", trigger: { kind: "on-enter" }, adjudication: "automatic", requiredInputs: [],
+  descriptor: { operation: { kind: "forced-movement", distanceHex: 1,
+    vector: { kind: "hex-offset", deltaCol: 1, deltaRow: 0 } } } };
+const forcedManager = new BattlefieldDynamicsRuntimeManager({ gameRef: ledgerGame });
+forcedManager.scenes.set(forcedScene.id, { status: "active", sceneId: forcedScene.id,
+  canonicalGeneration: { executionHandoff: { contract: {
+    forcedMovementGeometry: BATTLEFIELD_DYNAMICS_FORCED_MOVEMENT_GEOMETRY }, instructions: [forcedInstruction] },
+  applicationComposition: { instances: [forcedInstance] } } });
+const previousCanvas = globalThis.canvas;
+globalThis.canvas = { scene: forcedScene, grid: { getOffset: () => ({ i: 0, j: 0 }),
+  getDirectPath: ([from, to]) => [from, to], getTopLeftPoint: () => ({ x: 60, y: 0 }) } };
+const forcedCalls = [];
+const forcedToken = { id: "forced-token", parent: forcedScene, x: 0, y: 0,
+  async move(target) { forcedCalls.push(target); return true; } };
+const forcedEvent = { sceneId: forcedScene.id, tokenId: forcedToken.id, instanceKey: forcedInstance.key,
+  movementId: "forced-move-1",
+  instructionKey: forcedInstruction.key, triggerKind: "on-enter", triggerId: "entry", identity: {
+    environmentId: forcedInstance.environmentId, physicalContextId: forcedInstance.physicalContextId,
+    dynamicId: forcedInstance.dynamicId, sourceApplicationId: forcedInstance.sourceApplicationId } };
+assert.equal((await forcedManager.executeForcedMovementEvents(forcedToken, [forcedEvent]))[0].moved, true);
+assert.deepEqual(forcedCalls, [{ x: 60, y: 0 }]);
+assert.deepEqual(await forcedManager.executeForcedMovementEvents(forcedToken, [forcedEvent]), []);
+assert.deepEqual(await forcedManager.executeForcedMovementEvents(forcedToken, [forcedEvent, forcedEvent]), []);
+assert.equal(forcedManager.diagnosticsForScene(forcedScene).at(-1).code, "forced-movement-overlap-ambiguous");
+globalThis.canvas = previousCanvas;
 
 console.log("battlefield dynamics runtime rehydration, spatial, and diagnostics integration tests passed");

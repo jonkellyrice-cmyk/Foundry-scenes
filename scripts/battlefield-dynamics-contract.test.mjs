@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   BATTLEFIELD_DYNAMICS_EFFECT_KINDS,
+  BATTLEFIELD_DYNAMICS_FORCED_MOVEMENT_GEOMETRY,
   BATTLEFIELD_DYNAMICS_GENERATION_KINDS,
   BATTLEFIELD_DYNAMICS_TRIGGER_KINDS,
   assertBattlefieldDynamicsExecutionHandoff,
@@ -20,6 +21,7 @@ const contract = {
   preservesApplicationIdentity: true,
   preservesExactSpatialMembership: true,
   preservesIndependentRuleContributions: true,
+  forcedMovementGeometry: { ...BATTLEFIELD_DYNAMICS_FORCED_MOVEMENT_GEOMETRY },
   ownsMutableRuntimeState: false,
   ownsSitrepSemantics: false,
   ownsFoundryBehaviorAutomation: false,
@@ -149,6 +151,13 @@ assert.throws(() => assertBattlefieldDynamicsExecutionHandoff(badOperation), /fr
 const badContract = validGeneration();
 badContract.executionHandoff.contract.ownsMutableRuntimeState = true;
 assert.throws(() => assertBattlefieldDynamicsExecutionHandoff(badContract), /ownsMutableRuntimeState must be false/);
+const oldForcedGeometry = validGeneration();
+delete oldForcedGeometry.executionHandoff.contract.forcedMovementGeometry;
+oldForcedGeometry.executionHandoff.instructions[0].kind = "forced-movement";
+oldForcedGeometry.executionHandoff.instructions[0].descriptor.operation = {
+  kind: "forced-movement", distanceHex: 1, vector: { kind: "hex-offset", deltaCol: 1, deltaRow: 0 },
+};
+assert.throws(() => assertBattlefieldDynamicsExecutionHandoff(oldForcedGeometry), /forcedMovementGeometry is missing or unsupported/);
 
 const badIntrinsic = validGeneration();
 badIntrinsic.executionHandoff.environmentIntrinsicInstructions[0].adjudication = "automatic";

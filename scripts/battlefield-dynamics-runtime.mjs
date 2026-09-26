@@ -8,6 +8,7 @@ import {
 import { reconcileBattlefieldDynamicsAreaRegions } from "./battlefield-dynamics-spatial.mjs";
 import { BattlefieldDynamicsTriggerLedger, normalizeBattlefieldDynamicsMovement } from "./battlefield-dynamics-triggers.mjs";
 import { battlefieldDynamicsMovementCostCatalog, installBattlefieldDynamicsMovementCostAdapter } from "./battlefield-dynamics-movement-cost.mjs";
+import { executeBattlefieldDynamicsForcedMovement, planBattlefieldDynamicsForcedMovement } from "./battlefield-dynamics-forced-movement.mjs";
 import { applyBattlefieldDynamicsMovement, adjustBattlefieldDynamicsMovement,
   readBattlefieldDynamicsMovementLedger, BATTLEFIELD_DYNAMICS_MOVEMENT_LEDGER_FLAG } from "./battlefield-dynamics-movement-ledger.mjs";
 import { MODULE_ID } from "./live-scene-feed.mjs";
@@ -298,6 +299,8 @@ export class BattlefieldDynamicsRuntimeManager {
     this.triggerEvents = [];
     this.movementCostIssueKeys = new Set();
     this.movementLedgerWrites = new Map();
+    this.forcedMovementInFlight = new Set();
+    this.forcedMovementProcessed = new Set();
     this._socketHandler = message => this.receiveSocketMessage(message);
   }
 
@@ -409,6 +412,7 @@ export class BattlefieldDynamicsRuntimeManager {
     if (!nonEmpty(id)) return false;
     const disposed = this.scenes.delete(id);
     this.triggerLedger.clearScene(id);
+    for (const key of this.forcedMovementProcessed) if (key.startsWith(`${id}:`)) this.forcedMovementProcessed.delete(key);
     this.triggerEvents = this.triggerEvents.filter(event => event.sceneId !== id);
     for (const key of this.movementCostIssueKeys) if (key.includes(`"${id}"`)) this.movementCostIssueKeys.delete(key);
     this.diagnostics.clearScene(id);
@@ -479,6 +483,50 @@ export class BattlefieldDynamicsRuntimeManager {
     this.triggerEvents.push(...events);
     if (this.triggerEvents.length > 1000) this.triggerEvents.splice(0, this.triggerEvents.length - 1000);
     return { events, issues: normalized.issues, reason: "normalized" };
+  }
+
+  async executeForcedMovementEvents(token, events) {
+    if (!this.isAuthoritativeGM() || !Array.isArray(events) || !events.length) return [];
+    const scene = token?.parent;
+    const runtime = this.runtimeForScene(scene);
+    if (!runtime) return [];
+    const forced = events.filter(event => runtime.canonicalGeneration.executionHandoff?.instructions
+      ?.some(instruction => instruction.key === event.instructionKey && instruction.kind === "forced-movement"));
+    if (!forced.length) return [];
+    const key = `${scene.id}:${token.id}`;
+    if (this.forcedMovementInFlight.has(key)) return [];
+    if (forced.length > 1) {
+      this.recordMovementCostIssue({ code: "forced-movement-overlap-ambiguous", category: "forced-movement",
+        severity: "warning", automaticBlocked: true,
+        message: "Multiple forced movement instructions apply to this movement; GM must resolve their combined destination.",
+        provenance: { sceneId: scene.id, tokenId: token.id },
+        details: { instructionKeys: forced.map(event => event.instructionKey) } });
+      return [];
+    }
+    const plan = planBattlefieldDynamicsForcedMovement(scene, runtime, token, forced[0]);
+    if (plan.status !== "ready") {
+      this.recordMovementCostIssue(plan.issue);
+      return [{ moved: false, reason: plan.issue.code }];
+    }
+    const eventKey = `${key}:${forced[0].movementId}:${forced[0].instructionKey}:${forced[0].crossingIndex ?? 0}`;
+    if (this.forcedMovementProcessed.has(eventKey)) return [];
+    this.forcedMovementProcessed.add(eventKey);
+    if (this.forcedMovementProcessed.size > 1024) this.forcedMovementProcessed.delete(this.forcedMovementProcessed.values().next().value);
+    this.forcedMovementInFlight.add(key);
+    try {
+      const result = await executeBattlefieldDynamicsForcedMovement(plan);
+      if (!result.moved) this.forcedMovementProcessed.delete(eventKey);
+      if (!result.moved) this.recordMovementCostIssue({ code: "forced-movement-native-rejected",
+        category: "forced-movement", severity: "warning", automaticBlocked: true,
+        message: "Foundry did not complete the requested forced movement; GM resolution is required.",
+        provenance: { sceneId: scene.id, tokenId: token.id, instructionKey: forced[0].instructionKey }, details: {} });
+      return [result];
+    } catch (error) {
+      this.forcedMovementProcessed.delete(eventKey);
+      throw error;
+    } finally {
+      this.forcedMovementInFlight.delete(key);
+    }
   }
 
   drainTriggerEvents() {
@@ -571,7 +619,9 @@ export function installBattlefieldDynamicsRuntime({ HooksRef = globalThis.Hooks,
 
   HooksRef.on("moveToken", (token, movement) => {
     try {
-      battlefieldDynamicsRuntimeManager.handleTokenMovement(token, movement);
+      const { events } = battlefieldDynamicsRuntimeManager.handleTokenMovement(token, movement);
+      void battlefieldDynamicsRuntimeManager.executeForcedMovementEvents(token, events)
+        .catch(error => logLifecycleError("forced movement", error));
       void battlefieldDynamicsRuntimeManager.recordCompletedMovement(token, movement)
         .catch(error => logLifecycleError("movement ledger persistence", error));
     } catch (error) {
