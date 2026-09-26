@@ -42,6 +42,8 @@ jobs:
           node --check scripts/battlefield-dynamics-triggers.test.mjs
           node --check scripts/battlefield-dynamics-movement-cost.mjs
           node --check scripts/battlefield-dynamics-movement-cost.test.mjs
+          node --check scripts/battlefield-dynamics-movement-ledger.mjs
+          node --check scripts/battlefield-dynamics-movement-ledger.test.mjs
           node --check scripts/battlefield-dynamics-runtime.mjs
           node --check scripts/battlefield-dynamics-runtime.test.mjs
           node --check scripts/live-scene-feed.mjs

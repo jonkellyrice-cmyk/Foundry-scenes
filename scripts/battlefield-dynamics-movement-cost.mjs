@@ -7,6 +7,13 @@ import {
 } from "./battlefield-dynamics-spatial.mjs";
 
 export const BATTLEFIELD_DYNAMICS_MOVEMENT_COST_VERSION = 1;
+/** Foundry's completed movement section reports cost in Scene grid distance units. */
+export function completedBattlefieldDynamicsMovementCost(movement) {
+  const cost = movement?.passed?.cost;
+  if (typeof movement?.id !== "string" || !movement.id || !Number.isFinite(cost) || cost < 0) return null;
+  if (!Array.isArray(movement.passed.waypoints) || movement.passed.waypoints.length < 2) return null;
+  return cost;
+}
 const COMPOSITION = Object.freeze({
   baseCost: "native-movement-cost-in-hex-equivalents",
   additiveUnit: "hex-equivalents-per-traversal",

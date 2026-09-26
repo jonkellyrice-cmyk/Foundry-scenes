@@ -1,0 +1,21 @@
+import assert from "node:assert/strict";
+import { applyBattlefieldDynamicsMovement, adjustBattlefieldDynamicsMovement,
+  readBattlefieldDynamicsMovementLedger } from "./battlefield-dynamics-movement-ledger.mjs";
+
+const scene = { id: "scene", flags: {} };
+const empty = readBattlefieldDynamicsMovementLedger(scene);
+const move = { id: "movement-1", passed: { cost: 7.5, waypoints: [{ x: 0, y: 0 }, { x: 60, y: 0 }] } };
+const first = applyBattlefieldDynamicsMovement(empty, "token", move);
+assert.equal(first.changed, true);
+assert.equal(first.ledger.tokens.token.spent, 7.5);
+assert.equal(applyBattlefieldDynamicsMovement(first.ledger, "token", move).changed, false);
+assert.equal(applyBattlefieldDynamicsMovement(first.ledger, "token", { ...move, id: "preview", passed: { waypoints: [] } }).changed, false);
+const adjusted = adjustBattlefieldDynamicsMovement(first.ledger, "token", 3);
+assert.equal(first.ledger.tokens.token.spent, 7.5);
+assert.equal(adjusted.tokens.token.spent, 3);
+assert.equal(applyBattlefieldDynamicsMovement(adjusted, "token", { ...move, id: "movement-2" }).ledger.tokens.token.spent, 10.5);
+scene.flags["orphaned-sun-scenes"] = { battlefieldDynamicsMovementLedger: adjusted };
+assert.equal(readBattlefieldDynamicsMovementLedger(scene).tokens.token.spent, 3);
+assert.throws(() => adjustBattlefieldDynamicsMovement(adjusted, "token", -1));
+assert.throws(() => readBattlefieldDynamicsMovementLedger({ ...scene, id: "other" }));
+console.log("battlefield dynamics movement ledger tests passed");
