@@ -10,6 +10,8 @@ import { BattlefieldDynamicsTriggerLedger, normalizeBattlefieldDynamicsMovement 
 import { battlefieldDynamicsMovementCostCatalog, installBattlefieldDynamicsMovementCostAdapter } from "./battlefield-dynamics-movement-cost.mjs";
 import { executeBattlefieldDynamicsForcedMovement, planBattlefieldDynamicsForcedMovement } from "./battlefield-dynamics-forced-movement.mjs";
 import { normalizeBattlefieldDynamicsMomentum } from "./battlefield-dynamics-momentum.mjs";
+import { applyBattlefieldDynamicsMomentumMovement, readBattlefieldDynamicsMomentumState,
+  BATTLEFIELD_DYNAMICS_MOMENTUM_STATE_FLAG } from "./battlefield-dynamics-momentum-state.mjs";
 import { applyBattlefieldDynamicsMovement, adjustBattlefieldDynamicsMovement,
   readBattlefieldDynamicsMovementLedger, BATTLEFIELD_DYNAMICS_MOVEMENT_LEDGER_FLAG } from "./battlefield-dynamics-movement-ledger.mjs";
 import { MODULE_ID } from "./live-scene-feed.mjs";
@@ -268,7 +270,13 @@ export function battlefieldDynamicsSceneUpdateIsRelevant(changes, moduleId = MOD
     `flags.${moduleId}.-=${BATTLEFIELD_DYNAMICS_RUNTIME_FLAG}`,
   ];
   if (Object.keys(changes).some(key => generationPaths.some(prefix => key === prefix || key.startsWith(`${prefix}.`)))) return true;
-  if (hasOwn(changes, `flags.${moduleId}`)) return true;
+  if (hasOwn(changes, `flags.${moduleId}`)) {
+    const scope = changes[`flags.${moduleId}`];
+    if (!isRecord(scope)) return true;
+    return [CANONICAL_GENERATION_FLAG, `-=${CANONICAL_GENERATION_FLAG}`,
+      BATTLEFIELD_DYNAMICS_RUNTIME_FLAG, `-=${BATTLEFIELD_DYNAMICS_RUNTIME_FLAG}`]
+      .some(key => hasOwn(scope, key));
+  }
   if (!hasOwn(changes, "flags")) return false;
   if (changes.flags === null) return true;
   const moduleChanges = changes.flags?.[moduleId];
@@ -301,6 +309,7 @@ export class BattlefieldDynamicsRuntimeManager {
     this.momentumIntents = [];
     this.movementCostIssueKeys = new Set();
     this.movementLedgerWrites = new Map();
+    this.momentumStateWrites = new Map();
     this.forcedMovementInFlight = new Set();
     this.forcedMovementProcessed = new Set();
     this._socketHandler = message => this.receiveSocketMessage(message);
@@ -370,6 +379,14 @@ export class BattlefieldDynamicsRuntimeManager {
     return { cleared: true, reason: "removed" };
   }
 
+  async clearPersistedMomentumState(scene) {
+    if (!this.isAuthoritativeGM() || !scene) return false;
+    if (flagFromScene(scene, BATTLEFIELD_DYNAMICS_MOMENTUM_STATE_FLAG) == null) return false;
+    if (typeof scene.unsetFlag !== "function") return false;
+    await scene.unsetFlag(MODULE_ID, BATTLEFIELD_DYNAMICS_MOMENTUM_STATE_FLAG);
+    return true;
+  }
+
   async reconcileSceneSpatialProjections(scene, runtime = null) {
     return reconcileBattlefieldDynamicsAreaRegions(scene, runtime, { authoritative: this.isAuthoritativeGM() });
   }
@@ -390,15 +407,32 @@ export class BattlefieldDynamicsRuntimeManager {
       this.scenes.delete(id);
       const spatial = await this.reconcileSceneSpatialProjections(scene, runtime);
       this.refreshSceneDiagnostics(scene, runtime, spatial.issues);
-      if (persist) await this.clearPersistedSceneRuntime(scene);
+      if (persist) {
+        await this.clearPersistedSceneRuntime(scene);
+        await this.clearPersistedMomentumState(scene);
+      }
       return runtime;
     }
 
     this.scenes.set(id, runtime);
     if (persist) await this.persistSceneRuntime(scene, runtime);
+    const momentumIssues = [];
+    if (persist && this.isAuthoritativeGM()) {
+      const storedMomentum = flagFromScene(scene, BATTLEFIELD_DYNAMICS_MOMENTUM_STATE_FLAG);
+      if (storedMomentum != null) {
+        const validMomentum = readBattlefieldDynamicsMomentumState(scene, runtime, MODULE_ID);
+        if (!sameJson(storedMomentum, validMomentum)) {
+          momentumIssues.push({ code: "momentum-state-reconciled", category: "momentum",
+            severity: "warning", automaticBlocked: true,
+            message: "Stale or invalid momentum state was removed during Scene rehydration.",
+            provenance: { sceneId: id }, details: { sceneId: id } });
+          await scene.setFlag(MODULE_ID, BATTLEFIELD_DYNAMICS_MOMENTUM_STATE_FLAG, validMomentum);
+        }
+      }
+    }
     const spatial = await this.reconcileSceneSpatialProjections(scene, runtime);
     const cost = battlefieldDynamicsMovementCostCatalog(scene, runtime);
-    this.refreshSceneDiagnostics(scene, runtime, [...spatial.issues, ...cost.issues]);
+    this.refreshSceneDiagnostics(scene, runtime, [...spatial.issues, ...cost.issues, ...momentumIssues]);
     return runtime;
   }
 
@@ -466,6 +500,43 @@ export class BattlefieldDynamicsRuntimeManager {
     return this.queueMovementLedgerWrite(scene, ledger => ({
       ...applyBattlefieldDynamicsMovement(ledger, token.id, movement), movementId: movement?.id, tokenId: token.id,
     }));
+  }
+
+  recordCompletedMomentum(token, movement, intents = []) {
+    const scene = token?.parent;
+    const runtime = this.runtimeForScene(scene);
+    if (!scene || !runtime || !this.isAuthoritativeGM()) return Promise.resolve({ changed: false, reason: "not-authoritative-or-inactive" });
+    const id = scene.id;
+    const previous = this.momentumStateWrites.get(id) ?? Promise.resolve();
+    const task = previous.catch(() => {}).then(async () => {
+      const grid = globalThis.canvas?.scene?.id === id ? globalThis.canvas.grid : null;
+      const current = readBattlefieldDynamicsMomentumState(scene, runtime, MODULE_ID);
+      const result = applyBattlefieldDynamicsMomentumMovement(current, runtime, token, movement, intents, grid);
+      if (!result.changed) {
+        if (!["duplicate-movement", "legacy-duplicate"].includes(result.reason)) this.recordMovementCostIssue({
+          code: `momentum-state-${result.reason}`, category: "momentum", severity: "warning", automaticBlocked: true,
+          message: `Momentum state could not record movement: ${result.reason}. GM review is required.`,
+          provenance: { sceneId: id, tokenId: token.id }, details: { movementId: movement?.id, tokenId: token.id },
+        });
+        return result;
+      }
+      if (typeof scene.setFlag !== "function") {
+        this.recordMovementCostIssue({ code: "momentum-state-set-flag-unavailable", category: "momentum",
+          severity: "warning", automaticBlocked: true, message: "Scene cannot persist momentum state; GM review is required.",
+          provenance: { sceneId: id, tokenId: token.id }, details: { movementId: movement?.id, tokenId: token.id } });
+        return { changed: false, reason: "set-flag-unavailable" };
+      }
+      await scene.setFlag(MODULE_ID, BATTLEFIELD_DYNAMICS_MOMENTUM_STATE_FLAG, result.state);
+      for (const issue of result.issues) this.recordMovementCostIssue({ code: issue.code, category: "momentum",
+        severity: "warning", automaticBlocked: true, message: `Momentum resolution needs GM review: ${issue.code}.`,
+        provenance: { sceneId: id, tokenId: token.id, instanceKey: issue.instanceKey,
+          instructionKey: issue.instructionKey }, details: { tokenId: token.id,
+          instanceKey: issue.instanceKey, instructionKey: issue.instructionKey } });
+      return result;
+    });
+    this.momentumStateWrites.set(id, task);
+    void task.finally(() => { if (this.momentumStateWrites.get(id) === task) this.momentumStateWrites.delete(id); }).catch(() => {});
+    return task;
   }
 
   setMovementSpent(sceneOrId, tokenId, spent) {
@@ -638,11 +709,13 @@ export function installBattlefieldDynamicsRuntime({ HooksRef = globalThis.Hooks,
 
   HooksRef.on("moveToken", (token, movement) => {
     try {
-      const { events } = battlefieldDynamicsRuntimeManager.handleTokenMovement(token, movement);
+      const { events, momentumIntents = [] } = battlefieldDynamicsRuntimeManager.handleTokenMovement(token, movement);
       void battlefieldDynamicsRuntimeManager.executeForcedMovementEvents(token, events)
         .catch(error => logLifecycleError("forced movement", error));
       void battlefieldDynamicsRuntimeManager.recordCompletedMovement(token, movement)
         .catch(error => logLifecycleError("movement ledger persistence", error));
+      void battlefieldDynamicsRuntimeManager.recordCompletedMomentum(token, movement, momentumIntents)
+        .catch(error => logLifecycleError("momentum state persistence", error));
     } catch (error) {
       logLifecycleError("token movement normalization", error);
     }

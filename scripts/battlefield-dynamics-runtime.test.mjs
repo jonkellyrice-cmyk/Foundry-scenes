@@ -20,6 +20,8 @@ import {
 } from "./battlefield-dynamics-runtime.mjs";
 import { BATTLEFIELD_DYNAMICS_PROJECTION_FLAG, BATTLEFIELD_DYNAMICS_PROJECTION_OWNERSHIP,
   buildBattlefieldDynamicsAreaProjectionPlan } from "./battlefield-dynamics-spatial.mjs";
+import { BATTLEFIELD_DYNAMICS_MOMENTUM_STATE_FLAG, readBattlefieldDynamicsMomentumState }
+  from "./battlefield-dynamics-momentum-state.mjs";
 
 const MODULE_ID = "orphaned-sun-scenes";
 
@@ -270,6 +272,8 @@ assert.equal(battlefieldDynamicsSceneUpdateIsRelevant({ flags: { other: { value:
 assert.equal(battlefieldDynamicsSceneUpdateIsRelevant({ flags: { [MODULE_ID]: { battlefieldDynamicsGeneration: {} } } }), true);
 assert.equal(battlefieldDynamicsSceneUpdateIsRelevant({ flags: { [MODULE_ID]: { battlefieldDynamicsRuntime: {} } } }), true);
 assert.equal(battlefieldDynamicsSceneUpdateIsRelevant({ [`flags.${MODULE_ID}.battlefieldDynamicsRuntime`]: {} }), true);
+assert.equal(battlefieldDynamicsSceneUpdateIsRelevant({ [`flags.${MODULE_ID}.${BATTLEFIELD_DYNAMICS_MOMENTUM_STATE_FLAG}`]: {} }), false);
+assert.equal(battlefieldDynamicsSceneUpdateIsRelevant({ [`flags.${MODULE_ID}`]: { [BATTLEFIELD_DYNAMICS_MOMENTUM_STATE_FLAG]: {} } }), false);
 assert.equal(battlefieldDynamicsSceneUpdateIsRelevant({ [`flags.${MODULE_ID}.-=battlefieldDynamicsGeneration`]: null }), true);
 
 const gm1 = { id: "gm-1", isGM: true, active: true };
@@ -561,7 +565,10 @@ const momentumGeneration = { executionHandoff: { instructions: [momentumInstruct
     { instanceKeys: [forcedInstance.key], cells: [{ col: 0, row: 0 }] },
   ] } };
 const momentumProjection = buildBattlefieldDynamicsAreaProjectionPlan(momentumGeneration).projections[0];
-const momentumScene = { id: "momentum-scene", regions: [{ id: "momentum-region", getFlag(scope, name) {
+const momentumScene = { id: "momentum-scene", flags: { [MODULE_ID]: {} }, tokens: new Map(),
+  getFlag(scope, key) { return this.flags[scope]?.[key]; },
+  async setFlag(scope, key, value) { this.flags[scope][key] = structuredClone(value); },
+  regions: [{ id: "momentum-region", getFlag(scope, name) {
   return scope === MODULE_ID && name === BATTLEFIELD_DYNAMICS_PROJECTION_FLAG ? {
     version: 1, ownership: BATTLEFIELD_DYNAMICS_PROJECTION_OWNERSHIP, sceneId: "momentum-scene",
     projectionKey: momentumProjection.projectionKey, cellSignature: momentumProjection.cellSignature,
@@ -569,6 +576,7 @@ const momentumScene = { id: "momentum-scene", regions: [{ id: "momentum-region",
   } : null;
 } }] };
 const momentumToken = { ...triggerToken, id: "momentum-token", parent: momentumScene };
+momentumScene.tokens.set(momentumToken.id, momentumToken);
 const momentumManager = new BattlefieldDynamicsRuntimeManager({ gameRef: ledgerGame });
 momentumManager.scenes.set(momentumScene.id, { status: "active", sceneId: momentumScene.id,
   canonicalGeneration: momentumGeneration });
@@ -580,5 +588,22 @@ assert.ok(momentumMovement.momentumIntents[0].unresolved.includes("momentum-velo
 assert.deepEqual(momentumManager.drainMomentumIntents(), momentumMovement.momentumIntents);
 assert.deepEqual(momentumManager.drainMomentumIntents(), []);
 assert.equal(momentumManager.diagnosticsForScene(momentumScene).at(-1).code, "momentum-execution-unresolved");
+globalThis.canvas = { scene: momentumScene, grid: { getOffset: ({ x }) => ({ i: 0, j: x }),
+  offsetToCube: ({ i, j }) => ({ q: j, r: i, s: -i - j }) } };
+const [recorded, duplicate] = await Promise.all([
+  momentumManager.recordCompletedMomentum(momentumToken, triggerMovement, momentumMovement.momentumIntents),
+  momentumManager.recordCompletedMomentum(momentumToken, triggerMovement, momentumMovement.momentumIntents),
+]);
+assert.equal(recorded.changed, true);
+assert.equal(duplicate.reason, "duplicate-movement");
+assert.deepEqual(readBattlefieldDynamicsMomentumState(momentumScene,
+  momentumManager.runtimeForScene(momentumScene), MODULE_ID).tokens[momentumToken.id].lastSegment,
+{ q: 1, r: 0, s: -1 });
+assert.ok(momentumScene.getFlag(MODULE_ID, BATTLEFIELD_DYNAMICS_MOMENTUM_STATE_FLAG));
+ledgerGame.user = { id: "player", isGM: false };
+assert.equal((await momentumManager.recordCompletedMomentum(momentumToken,
+  { ...triggerMovement, id: "player-move" })).changed, false);
+ledgerGame.user = { id: "gm", isGM: true };
+globalThis.canvas = previousCanvas;
 
 console.log("battlefield dynamics runtime rehydration, spatial, and diagnostics integration tests passed");
