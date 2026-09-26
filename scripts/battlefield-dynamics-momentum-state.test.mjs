@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { applyBattlefieldDynamicsMomentumMovement, readBattlefieldDynamicsMomentumState,
-  BATTLEFIELD_DYNAMICS_MOMENTUM_STATE_FLAG } from "./battlefield-dynamics-momentum-state.mjs";
+  resolvedBattlefieldDynamicsMomentumContributions, BATTLEFIELD_DYNAMICS_MOMENTUM_STATE_FLAG }
+  from "./battlefield-dynamics-momentum-state.mjs";
 
 const moduleId = "orphaned-sun-scenes";
 const identity = { environmentId: "outer-space", physicalContextId: "void", dynamicId: "drift",
@@ -35,6 +36,7 @@ assert.deepEqual(result.issues, []);
 assert.deepEqual(Object.keys(result.state.tokens.unit.applications["instance-a"].contributions), ["rule-0", "rule-1", "rule-2"]);
 assert.deepEqual(result.state.tokens.unit.applications["instance-a"].contributions["rule-0"].velocity,
   { q: 1, r: 0, s: -1 });
+assert.equal(resolvedBattlefieldDynamicsMomentumContributions(result.state, token.id, "brake").length, 2);
 assert.equal(applyBattlefieldDynamicsMomentumMovement(result.state, runtime, token,
   movement("brake", 2, 1), [intent(0, "brake")], grid).reason, "duplicate-movement");
 assert.equal(applyBattlefieldDynamicsMomentumMovement(result.state, runtime, token,

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { battlefieldDynamicsMomentumIntentCanResolve, normalizeBattlefieldDynamicsMomentum,
+import { battlefieldDynamicsMomentumCorrectionMatches, battlefieldDynamicsMomentumIntentCanResolve,
+  normalizeBattlefieldDynamicsMomentum,
   resolveBattlefieldDynamicsMomentumVector } from "./battlefield-dynamics-momentum.mjs";
 import { BATTLEFIELD_DYNAMICS_MOMENTUM_EXECUTION } from "./battlefield-dynamics-contract.mjs";
 
@@ -32,6 +33,10 @@ assert.deepEqual(typed.intent.operation.execution, operation.execution);
 assert.deepEqual(typed.intent.unresolved, ["momentum-velocity-state-unavailable"]);
 assert.equal(battlefieldDynamicsMomentumIntentCanResolve(typed.intent), true);
 assert.equal(battlefieldDynamicsMomentumIntentCanResolve({ ...typed.intent, adjudication: "gm-confirmed" }), false);
+assert.equal(battlefieldDynamicsMomentumCorrectionMatches({ passed: { waypoints: [{ x: 2, y: 3 }] } },
+  { x: 2, y: 3 }), true);
+assert.equal(battlefieldDynamicsMomentumCorrectionMatches({ passed: { waypoints: [{ x: 3, y: 3 }] } },
+  { x: 2, y: 3 }), false);
 
 const source = { q: 2, r: -2, s: 0 };
 const brake = { q: -1, r: 1, s: 0 };

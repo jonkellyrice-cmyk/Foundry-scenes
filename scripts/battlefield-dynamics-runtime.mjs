@@ -9,9 +9,12 @@ import { reconcileBattlefieldDynamicsAreaRegions } from "./battlefield-dynamics-
 import { BattlefieldDynamicsTriggerLedger, normalizeBattlefieldDynamicsMovement } from "./battlefield-dynamics-triggers.mjs";
 import { battlefieldDynamicsMovementCostCatalog, installBattlefieldDynamicsMovementCostAdapter } from "./battlefield-dynamics-movement-cost.mjs";
 import { executeBattlefieldDynamicsForcedMovement, planBattlefieldDynamicsForcedMovement } from "./battlefield-dynamics-forced-movement.mjs";
-import { normalizeBattlefieldDynamicsMomentum } from "./battlefield-dynamics-momentum.mjs";
+import { battlefieldDynamicsMomentumCorrectionMatches, normalizeBattlefieldDynamicsMomentum }
+  from "./battlefield-dynamics-momentum.mjs";
 import { applyBattlefieldDynamicsMomentumMovement, readBattlefieldDynamicsMomentumState,
   BATTLEFIELD_DYNAMICS_MOMENTUM_STATE_FLAG } from "./battlefield-dynamics-momentum-state.mjs";
+import { executeBattlefieldDynamicsMomentumMotion, planBattlefieldDynamicsMomentumMotion }
+  from "./battlefield-dynamics-momentum-motion.mjs";
 import { applyBattlefieldDynamicsMovement, adjustBattlefieldDynamicsMovement,
   readBattlefieldDynamicsMovementLedger, BATTLEFIELD_DYNAMICS_MOVEMENT_LEDGER_FLAG } from "./battlefield-dynamics-movement-ledger.mjs";
 import { MODULE_ID } from "./live-scene-feed.mjs";
@@ -310,6 +313,7 @@ export class BattlefieldDynamicsRuntimeManager {
     this.movementCostIssueKeys = new Set();
     this.movementLedgerWrites = new Map();
     this.momentumStateWrites = new Map();
+    this.momentumMotionInFlight = new Map();
     this.forcedMovementInFlight = new Set();
     this.forcedMovementProcessed = new Set();
     this._socketHandler = message => this.receiveSocketMessage(message);
@@ -451,6 +455,7 @@ export class BattlefieldDynamicsRuntimeManager {
     for (const key of this.forcedMovementProcessed) if (key.startsWith(`${id}:`)) this.forcedMovementProcessed.delete(key);
     this.triggerEvents = this.triggerEvents.filter(event => event.sceneId !== id);
     this.momentumIntents = this.momentumIntents.filter(intent => intent.sceneId !== id);
+    for (const key of this.momentumMotionInFlight.keys()) if (key.startsWith(`${id}:`)) this.momentumMotionInFlight.delete(key);
     for (const key of this.movementCostIssueKeys) if (key.includes(`"${id}"`)) this.movementCostIssueKeys.delete(key);
     this.diagnostics.clearScene(id);
     return disposed;
@@ -539,6 +544,45 @@ export class BattlefieldDynamicsRuntimeManager {
     return task;
   }
 
+  async executeCompletedMomentumMotion(token, movement, intents = []) {
+    const scene = token?.parent;
+    const runtime = this.runtimeForScene(scene);
+    if (!scene || !runtime || !this.isAuthoritativeGM()) return { moved: false, reason: "not-authoritative-or-inactive" };
+    const key = `${scene.id}:${token.id}`;
+    if (this.momentumMotionInFlight.has(key)) return { moved: false, reason: "momentum-motion-in-flight" };
+    const recorded = await this.recordCompletedMomentum(token, movement, intents);
+    if (!recorded.changed) return { moved: false, reason: recorded.reason };
+    if (this.runtimeForScene(scene) !== runtime) return { moved: false, reason: "runtime-changed" };
+    const plan = planBattlefieldDynamicsMomentumMotion(scene, runtime, token, movement, recorded);
+    if (plan.status === "none") return { moved: false, reason: plan.reason ?? "no-resolved-momentum" };
+    if (plan.status !== "ready") {
+      this.recordMovementCostIssue(plan.issue);
+      return { moved: false, reason: plan.issue.code };
+    }
+    const finalWaypoint = movement.passed.waypoints.at(-1);
+    if (token.x !== finalWaypoint.x || token.y !== finalWaypoint.y) return { moved: false, reason: "token-moved-during-planning" };
+    this.momentumMotionInFlight.set(key, plan.target);
+    try {
+      const result = await executeBattlefieldDynamicsMomentumMotion(plan);
+      if (!result.moved) this.recordMovementCostIssue({ code: "momentum-motion-native-rejected", category: "momentum",
+        severity: "warning", automaticBlocked: true,
+        message: "Foundry rejected the momentum destination; GM resolution is required.",
+        provenance: { sceneId: scene.id, tokenId: token.id, instanceKey: plan.contribution.instanceKey,
+          instructionKey: plan.contribution.instructionKey }, details: { movementId: movement.id, tokenId: token.id } });
+      return result;
+    } catch (error) {
+      this.recordMovementCostIssue({ code: "momentum-motion-native-failed", category: "momentum",
+        severity: "warning", automaticBlocked: true,
+        message: "Foundry could not complete the momentum destination; GM resolution is required.",
+        provenance: { sceneId: scene.id, tokenId: token.id, instanceKey: plan.contribution.instanceKey,
+          instructionKey: plan.contribution.instructionKey },
+        details: { movementId: movement.id, tokenId: token.id, error: String(error) } });
+      return { moved: false, reason: "momentum-motion-native-failed" };
+    } finally {
+      this.momentumMotionInFlight.delete(key);
+    }
+  }
+
   setMovementSpent(sceneOrId, tokenId, spent) {
     const scene = this.sceneDocument(sceneOrId);
     if (!scene || !this.isAuthoritativeGM()) return Promise.resolve({ changed: false, reason: "not-authoritative-or-unavailable" });
@@ -546,7 +590,7 @@ export class BattlefieldDynamicsRuntimeManager {
       ledger: adjustBattlefieldDynamicsMovement(ledger, tokenId, spent), reason: "gm-adjustment" }));
   }
 
-  handleTokenMovement(token, movement) {
+  handleTokenMovement(token, movement, { suppressMomentum = false } = {}) {
     if (!this.isAuthoritativeGM()) return { events: [], issues: [], reason: "not-authoritative-gm" };
     const scene = token?.parent;
     const runtime = this.runtimeForScene(scene);
@@ -556,7 +600,7 @@ export class BattlefieldDynamicsRuntimeManager {
     const events = normalized.events.filter(event => this.triggerLedger.accept(event));
     this.triggerEvents.push(...events);
     if (this.triggerEvents.length > 1000) this.triggerEvents.splice(0, this.triggerEvents.length - 1000);
-    const momentumEvents = events.filter(event => runtime.canonicalGeneration.executionHandoff?.instructions
+    const momentumEvents = (suppressMomentum ? [] : events).filter(event => runtime.canonicalGeneration.executionHandoff?.instructions
       ?.some(instruction => instruction.key === event.instructionKey && instruction.kind === "momentum-effect"));
     const momentumIntents = [];
     for (const event of momentumEvents) {
@@ -709,13 +753,18 @@ export function installBattlefieldDynamicsRuntime({ HooksRef = globalThis.Hooks,
 
   HooksRef.on("moveToken", (token, movement) => {
     try {
-      const { events, momentumIntents = [] } = battlefieldDynamicsRuntimeManager.handleTokenMovement(token, movement);
+      const target = battlefieldDynamicsRuntimeManager.momentumMotionInFlight.get(`${token?.parent?.id}:${token?.id}`);
+      const correction = battlefieldDynamicsMomentumCorrectionMatches(movement, target);
+      const { events, momentumIntents = [] } = battlefieldDynamicsRuntimeManager.handleTokenMovement(token, movement,
+        { suppressMomentum: Boolean(correction) });
       void battlefieldDynamicsRuntimeManager.executeForcedMovementEvents(token, events)
         .catch(error => logLifecycleError("forced movement", error));
-      void battlefieldDynamicsRuntimeManager.recordCompletedMovement(token, movement)
-        .catch(error => logLifecycleError("movement ledger persistence", error));
-      void battlefieldDynamicsRuntimeManager.recordCompletedMomentum(token, movement, momentumIntents)
-        .catch(error => logLifecycleError("momentum state persistence", error));
+      if (!correction) {
+        void battlefieldDynamicsRuntimeManager.recordCompletedMovement(token, movement)
+          .catch(error => logLifecycleError("movement ledger persistence", error));
+        void battlefieldDynamicsRuntimeManager.executeCompletedMomentumMotion(token, movement, momentumIntents)
+          .catch(error => logLifecycleError("momentum motion", error));
+      }
     } catch (error) {
       logLifecycleError("token movement normalization", error);
     }

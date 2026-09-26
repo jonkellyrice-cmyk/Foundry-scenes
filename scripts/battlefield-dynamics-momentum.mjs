@@ -15,6 +15,13 @@ export function battlefieldDynamicsMomentumIntentCanResolve(intent) {
     && intent.operation?.execution?.resolutionLaw === "hex-vector-addition";
 }
 
+/** Match only the native correction destination, never every concurrent Token move. */
+export function battlefieldDynamicsMomentumCorrectionMatches(movement, target) {
+  const last = movement?.passed?.waypoints?.at?.(-1);
+  return Number.isFinite(target?.x) && Number.isFinite(target?.y)
+    && last?.x === target.x && last?.y === target.y;
+}
+
 /** Native grid conversion keeps signed vector composition valid across odd-row parity. */
 export function resolveBattlefieldDynamicsMomentumVector(grid, anchor, source, attempted, operation) {
   if (!cube(source) || !cube(attempted) || !["preserve", "stop", "redirect", "bias"].includes(operation?.mode)) {
