@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   BATTLEFIELD_DYNAMICS_EFFECT_KINDS,
   BATTLEFIELD_DYNAMICS_FORCED_MOVEMENT_GEOMETRY,
+  BATTLEFIELD_DYNAMICS_MOMENTUM_EXECUTION,
   BATTLEFIELD_DYNAMICS_GENERATION_KINDS,
   BATTLEFIELD_DYNAMICS_TRIGGER_KINDS,
 } from "./battlefield-dynamics-contract.mjs";
@@ -604,6 +605,36 @@ ledgerGame.user = { id: "player", isGM: false };
 assert.equal((await momentumManager.recordCompletedMomentum(momentumToken,
   { ...triggerMovement, id: "player-move" })).changed, false);
 ledgerGame.user = { id: "gm", isGM: true };
+globalThis.canvas = previousCanvas;
+
+const typedOperation = { kind: "momentum-effect", mode: "preserve", execution: {
+  stateSource: "incoming-movement", timing: "on-trigger", lifetime: "single-resolution",
+  resolutionLaw: "hex-vector-addition" } };
+momentumInstruction.descriptor.operation = typedOperation;
+momentumGeneration.executionHandoff.contract = { momentumExecution: BATTLEFIELD_DYNAMICS_MOMENTUM_EXECUTION };
+momentumScene.grid = { type: 2 };
+momentumToken.x = 2;
+momentumToken.y = 0;
+const correctionCalls = [];
+momentumToken.move = async target => {
+  assert.deepEqual(momentumManager.momentumMotionInFlight.get(`${momentumScene.id}:${momentumToken.id}`), target);
+  correctionCalls.push(target);
+  momentumToken.x = target.x;
+  momentumToken.y = target.y;
+  return true;
+};
+globalThis.canvas = { scene: momentumScene, grid: { getOffset: ({ x, y }) => ({ i: y, j: x }),
+  offsetToCube: ({ i, j }) => ({ q: j, r: i, s: -i - j }),
+  cubeToOffset: ({ q, r }) => ({ i: r, j: q }),
+  getTopLeftPoint: ({ i, j }) => ({ x: j, y: i }), getDirectPath: ([start, end]) => [start, end] } };
+const typedIntent = { ...momentumMovement.momentumIntents[0], movementId: "move-2",
+  operation: typedOperation, unresolved: ["momentum-velocity-state-unavailable"] };
+const typedMove = { id: "move-2", passed: { waypoints: [{ x: 1, y: 0 }, { x: 2, y: 0 }] } };
+assert.deepEqual(await momentumManager.executeCompletedMomentumMotion(momentumToken, typedMove, [typedIntent]),
+  { moved: true, reason: "moved" });
+assert.deepEqual(correctionCalls, [{ x: 3, y: 0 }]);
+assert.equal((await momentumManager.executeCompletedMomentumMotion(momentumToken, typedMove, [typedIntent])).moved, false);
+assert.equal(momentumManager.momentumMotionInFlight.size, 0);
 globalThis.canvas = previousCanvas;
 
 console.log("battlefield dynamics runtime rehydration, spatial, and diagnostics integration tests passed");

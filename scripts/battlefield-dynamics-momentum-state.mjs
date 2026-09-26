@@ -15,6 +15,18 @@ const identityOf = instance => Object.fromEntries(identityFields.map(key => [key
 const sameIdentity = (left, right) => isRecord(left) && isRecord(right)
   && identityFields.every(key => left[key] === right[key]);
 
+export function resolvedBattlefieldDynamicsMomentumContributions(state, tokenId, movementId) {
+  const applications = state?.tokens?.[tokenId]?.applications ?? {};
+  const contributions = [];
+  for (const [instanceKey, app] of Object.entries(applications)) {
+    for (const [instructionKey, entry] of Object.entries(app.contributions ?? {})) {
+      if (entry.lastResolved?.movementId === movementId) contributions.push({ instanceKey,
+        instructionKey, velocity: entry.lastResolved.velocity });
+    }
+  }
+  return contributions;
+}
+
 /** Read mutable momentum without accepting stale application identity as authority. */
 export function readBattlefieldDynamicsMomentumState(scene, runtime, moduleId) {
   const state = scene?.getFlag?.(moduleId, BATTLEFIELD_DYNAMICS_MOMENTUM_STATE_FLAG)
