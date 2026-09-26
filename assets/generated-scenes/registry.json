@@ -3,23 +3,23 @@
   "scenes": [
     {
       "key": "battle-map-e0effd8c-33e8-42df-b78a-952e63966d63",
-      "name": "Habitat Junction — Boarding / Breach Zone",
+      "name": "Shanyuan Binghe — Engagement",
       "campaignId": "orphaned-sun",
-      "revision": 7,
+      "revision": 9,
       "packagePath": "assets/generated-scenes/battle-map-e0effd8c-33e8-42df-b78a-952e63966d63.scene-package.json",
       "packageSchemaVersion": 1,
       "foundryGeneration": 13,
-      "backgroundSha256": "5c30cc74d4e827b80a1e6c9cce769c463f02de31225aa9b3b8358f0f285c811a",
-      "updatedAt": "2026-09-25T22:47:41.717Z",
-      "subtitle": "Revision 7 · orphaned-sun",
+      "backgroundSha256": "00d71642df710948690a33b457385b1ccd298c734ecb5cbad03526600134b7a9",
+      "updatedAt": "2026-09-26T03:02:49.486Z",
+      "subtitle": "Revision 9 · orphaned-sun",
       "description": "Published from the Lancer GM Kit live battle-map feed.",
       "tags": [
         "Live",
         "Battle Map"
       ],
-      "wallCount": 190,
-      "doorCount": 4,
-      "lightCount": 12,
+      "wallCount": 0,
+      "doorCount": 0,
+      "lightCount": 2,
       "previewUrl": "https://raw.githubusercontent.com/jonkellyrice-cmyk/Foundry-scenes/main/assets/generated-scenes/previews/battle-map-e0effd8c-33e8-42df-b78a-952e63966d63.png"
     },
     {
